@@ -9,17 +9,15 @@ public class Zombie : MonoBehaviour
     public float Speed;
     private Rigidbody2D rb;
     private Rigidbody2D rbPlayer;
-    public Player player;
-    private Vector2 dir;
-    private Vector2 moveV;
+    private Player player;
 
     void Start()
     {
+        player = FindObjectOfType<Player>();
         rb = GetComponent<Rigidbody2D>();
         rbPlayer = player.GetComponent<Rigidbody2D>();
     }
 
-    // Update is called once per frame
     void Update()
     {
         if (Health <= 0)
@@ -27,13 +25,11 @@ public class Zombie : MonoBehaviour
             Destroy(gameObject);
             player.Score += KillPoints;
         }
-        dir = rbPlayer.position - rb.position;
-        moveV = dir.normalized * Speed;
     }
 
     private void FixedUpdate()
     {
-        rb.MovePosition(rb.position + moveV * Time.fixedDeltaTime);
+        transform.position = Vector2.MoveTowards(transform.position, player.transform.position, Speed * Time.deltaTime);
     }
 
     public void TakeDamage(double damage) => Health -= damage;
