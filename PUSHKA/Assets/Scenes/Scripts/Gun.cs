@@ -10,11 +10,11 @@ public class Gun : MonoBehaviour
 
     private float currentTimeBetweenShoot;
     public float TimeBetweenShotForGun;
-    private AudioSource bas;
+    private AudioSource sound;
 
     void Start()
     {
-        bas = GetComponent<AudioSource>();
+        sound = GetComponent<AudioSource>();
         currentTimeBetweenShoot = TimeBetweenShotForGun;
     }
 
@@ -38,9 +38,12 @@ public class Gun : MonoBehaviour
             if (Input.GetMouseButton(0))
             {
                 Instantiate(Bullet, ShotPoint.position, transform.rotation);
-                bas.Play();
+                if(!sound.isPlaying)
+                    sound.Play();
                 currentTimeBetweenShoot = 0;
             }
+            else
+                sound.Stop();
         }
         else
             currentTimeBetweenShoot += Time.deltaTime;
