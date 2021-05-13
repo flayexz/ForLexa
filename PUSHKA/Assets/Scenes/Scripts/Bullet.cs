@@ -28,6 +28,8 @@ public class Bullet : MonoBehaviour
         }
         transform.Translate(Vector2.right * Speed * Time.deltaTime);
     }
+    
+    
 
     private void Destroy()
     {

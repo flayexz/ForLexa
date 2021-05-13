@@ -4,27 +4,30 @@ using UnityEngine;
 
 public class Player : MonoBehaviour
 {
-    public float Speed;
-
-    public int Score { get; set; }
+    [SerializeField] private float speed;
+    
     private Rigidbody2D player;
-    private Vector2 moveInput;
-    private Vector2 moveVelocity;
 
     void Start()
     {
-        Score = 0;
         player = GetComponent<Rigidbody2D>();
     }
 
-    void Update()
+
+    private void OnCollisionEnter2D(Collision2D collision)
     {
-        moveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-        moveVelocity = moveInput.normalized * Speed;
+        
     }
 
     private void FixedUpdate()
     {
+        Move();
+    }
+
+    private void Move()
+    {
+        var moveInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        var moveVelocity = moveInput.normalized * speed;
         player.MovePosition(player.position + moveVelocity * Time.fixedDeltaTime);
     }
 }
