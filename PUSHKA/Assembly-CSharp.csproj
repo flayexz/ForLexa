@@ -57,6 +57,7 @@
      <Compile Include="Assets\Scenes\Scripts\Zombie.cs" />
      <Compile Include="Assets\Scenes\Scripts\Player.cs" />
      <Compile Include="Assets\Scenes\Scripts\Bullet.cs" />
+     <Compile Include="Assets\Scenes\Scripts\ScoreManager.cs" />
  <Reference Include="UnityEngine">
  <HintPath>C:/Program Files/Unity/Hub/Editor/2020.3.3f1/Editor/Data/Managed/UnityEngine/UnityEngine.dll</HintPath>
  </Reference>
@@ -684,6 +685,12 @@
  <Reference Include="Unity.2D.IK.Runtime">
  <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/Unity.2D.IK.Runtime.dll</HintPath>
  </Reference>
+ <Reference Include="Cinemachine">
+ <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/Cinemachine.dll</HintPath>
+ </Reference>
+ <Reference Include="com.unity.cinemachine.editor">
+ <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/com.unity.cinemachine.editor.dll</HintPath>
+ </Reference>
  <Reference Include="Unity.2D.Animation.Triangle.Runtime">
  <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/Unity.2D.Animation.Triangle.Runtime.dll</HintPath>
  </Reference>
@@ -710,12 +717,6 @@
  </Reference>
  <Reference Include="Unity.2D.SpriteShape.Runtime">
  <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/Unity.2D.SpriteShape.Runtime.dll</HintPath>
- </Reference>
- <Reference Include="com.unity.cinemachine.editor">
- <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/com.unity.cinemachine.editor.dll</HintPath>
- </Reference>
- <Reference Include="Cinemachine">
- <HintPath>F:/trash/Zero/PUSHKA/Library/ScriptAssemblies/Cinemachine.dll</HintPath>
  </Reference>
   </ItemGroup>
   <ItemGroup>

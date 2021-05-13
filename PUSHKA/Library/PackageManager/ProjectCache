@@ -5,16 +5,16 @@ m_ProjectFiles:
     m_ContentTrackingEnabled: 1
     m_ModificationDate:
       serializedVersion: 2
-      ticks: 637564991220633695
-    m_Hash: 3011466998
+      ticks: 637565093647121062
+    m_Hash: 3853665491
   m_LockFileStatus:
     m_FilePath: F:/trash/Zero/PUSHKA/Packages/packages-lock.json
     m_PathExists: 1
     m_ContentTrackingEnabled: 1
     m_ModificationDate:
       serializedVersion: 2
-      ticks: 637564991223772456
-    m_Hash: 2706472411
+      ticks: 637565093647131070
+    m_Hash: 2630822332
 m_EmbeddedPackageManifests:
   m_ManifestsStatus: {}
 m_PackageAssets:
