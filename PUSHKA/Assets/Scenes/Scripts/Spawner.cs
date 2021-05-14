@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class Spawner : MonoBehaviour
 {
-    public Zombie[] Zombeis; // может сделать target
+    public Zombie[] Zombeis; 
     public float MinSpawnRadius;
     public float MaxSpawnRadius;
 

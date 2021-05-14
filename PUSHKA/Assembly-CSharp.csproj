@@ -58,6 +58,9 @@
      <Compile Include="Assets\Scenes\Scripts\Player.cs" />
      <Compile Include="Assets\Scenes\Scripts\ScoreManager.cs" />
      <Compile Include="Assets\Scenes\Scripts\Bullet.cs" />
+     <Compile Include="Assets\Scenes\Scripts\IPlayer.cs" />
+     <Compile Include="Assets\Scenes\Scripts\IGun.cs" />
+     <Compile Include="Assets\Scenes\Scripts\BoxOfRandomGun.cs" />
  <Reference Include="UnityEngine">
  <HintPath>E:/Unity/2020.3.3f1/Editor/Data/Managed/UnityEngine/UnityEngine.dll</HintPath>
  </Reference>
