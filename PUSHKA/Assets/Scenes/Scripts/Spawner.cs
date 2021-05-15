@@ -16,6 +16,7 @@ public class Spawner : MonoBehaviour
     void Start()
     {
         amountOfZombies = Zombeis.Length;
+        
     }
 
     private void FixedUpdate()

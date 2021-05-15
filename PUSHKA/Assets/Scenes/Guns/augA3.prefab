@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1598382984595566405}
   - component: {fileID: 1598382984595566407}
   - component: {fileID: 1598382984595566406}
-  - component: {fileID: 9216221318838876956}
+  - component: {fileID: 4733469359198620146}
   m_Layer: 0
   m_Name: augA3
   m_TagString: Untagged
@@ -104,8 +104,8 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
---- !u!61 &9216221318838876956
-BoxCollider2D:
+--- !u!58 &4733469359198620146
+CircleCollider2D:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
@@ -118,15 +118,5 @@ BoxCollider2D:
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
-  m_SpriteTilingProperty:
-    border: {x: 0, y: 0, z: 0, w: 0}
-    pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 0.94, y: 0.39}
-    newSize: {x: 0.94, y: 0.39}
-    adaptiveTilingThreshold: 0.5
-    drawMode: 0
-    adaptiveTiling: 0
-  m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 0.94, y: 0.39}
-  m_EdgeRadius: 0
+  m_Radius: 0.8

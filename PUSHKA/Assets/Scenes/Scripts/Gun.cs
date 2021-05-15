@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -18,6 +19,10 @@ public class Gun : MonoBehaviour, IGun
 
     [SerializeField] private string name;
 
+    private Player player;
+
+    private Bounds triggerZone;
+
     public string Name => name;
     
 
@@ -25,12 +30,15 @@ public class Gun : MonoBehaviour, IGun
     {
         currentAmmo = ammo;
         sound = GetComponent<AudioSource>();
+        player = FindObjectOfType<Player>();
         currentTimeBetweenShoot = TimeBetweenShotForGun;
+        triggerZone = GetComponent<Collider2D>().bounds;
     }
 
     void Update()
     {
-        
+        if (triggerZone.Contains(player.transform.position) && Input.GetKeyDown(KeyCode.E))
+            player.PickUpWeapon(this);
     }
     
     private void FixedUpdate()
@@ -41,6 +49,7 @@ public class Gun : MonoBehaviour, IGun
             TakeAShot();
         }
     }
+    
 
     private void RotateGun()
     {

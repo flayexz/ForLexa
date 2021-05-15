@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 8721999184303793011}
   - component: {fileID: 8721999184303793009}
   - component: {fileID: 8721999184303793008}
-  - component: {fileID: -2498436547098080430}
+  - component: {fileID: 2803734784501845506}
   m_Layer: 0
   m_Name: ak47
   m_TagString: Untagged
@@ -104,8 +104,8 @@ MonoBehaviour:
   ammo: 0
   currentAmmo: 0
   name: ak47
---- !u!61 &-2498436547098080430
-BoxCollider2D:
+--- !u!58 &2803734784501845506
+CircleCollider2D:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
@@ -118,15 +118,5 @@ BoxCollider2D:
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
-  m_SpriteTilingProperty:
-    border: {x: 0, y: 0, z: 0, w: 0}
-    pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 1.1, y: 0.35}
-    newSize: {x: 1.1, y: 0.35}
-    adaptiveTilingThreshold: 0.5
-    drawMode: 0
-    adaptiveTiling: 0
-  m_AutoTiling: 0
   serializedVersion: 2
-  m_Size: {x: 1.1, y: 0.35}
-  m_EdgeRadius: 0
+  m_Radius: 0.55

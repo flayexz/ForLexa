@@ -29,12 +29,6 @@ public class Player : MonoBehaviour
             ChangeWeaponToNExtOneFromInventory();
     }
 
-    private void OnTriggerEnter2D(Collider2D collision)
-    {
-        if (collision.TryGetComponent<Gun>(out Gun pickUpWeapon))
-            PickUpWeapon(collision, pickUpWeapon);
-    }
-
     private void FixedUpdate()
     {
         Move();
@@ -48,19 +42,19 @@ public class Player : MonoBehaviour
         player.MovePosition(player.position + moveVelocity * Time.fixedDeltaTime);
     }
 
-    private void PickUpWeapon(Collider2D collision, Gun pickUpWeapon)
+    public void PickUpWeapon(Gun newWeapon)
     {
-        var gun = unlockedWeapons.Find(weapon => weapon.Name == pickUpWeapon.Name);
+        var gun = unlockedWeapons.Find(weapon => weapon.Name == newWeapon.Name);
         if (gun != null)
             gun.AddCartiges();
         else if (unlockedWeapons.Count >= maxAmountOfGuns)
-            ChangeCurrentWeaponOnNewWeapon(pickUpWeapon.Name);
+            ChangeCurrentWeaponOnNewWeapon(newWeapon.Name);
         else
         {
-            AddWeaponInInventory(pickUpWeapon.Name);
+            AddWeaponInInventory(newWeapon.Name);
             ChangeWeaponToNExtOneFromInventory();
         }
-        Destroy(collision.gameObject);
+        Destroy(newWeapon.gameObject);
     }
     
     private void AddWeaponInInventory(string nameOfNewWeapon)
