@@ -1,25 +1,28 @@
-using System;
-using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal.Filters;
+using System.Collections.Generic;
+using JetBrains.Annotations;
+using Unity.Cloud.Collaborate.Models.Structures;
 
-namespace UnityEngine.TestRunner.NUnitExtensions.Filters
+namespace Unity.Cloud.Collaborate.Presenters
 {
-    internal class AssemblyNameFilter : ValueMatchFilter
+    internal interface IHistoryPresenter : IPresenter
     {
-        public AssemblyNameFilter(string assemblyName) : base(assemblyName) {}
+        /// <summary>
+        /// Request a move to the previous page. Ensures page number never goes below 0.
+        /// </summary>
+        void PrevPage();
 
-        public override bool Match(ITest test)
-        {
-            string assemblyName = string.Empty;
-            //Assembly fullname is in the format "Assembly-name, meta data ...", so extract the name by looking for the comma
-            if (test.TypeInfo != null && test.TypeInfo.Assembly != null && test.TypeInfo.FullName != null)
-                assemblyName = test.TypeInfo.Assembly.FullName.Substring(0, test.TypeInfo.Assembly.FullName.IndexOf(',')).TrimEnd(',');
-            return ExpectedValue.Equals(assemblyName, StringComparison.OrdinalIgnoreCase);
-        }
+        /// <summary>
+        /// Request a move to the next page. Ensures page number doesn't go beyond the max number of pages.
+        /// </summary>
+        void NextPage();
 
-        protected override string ElementName
-        {
-            get { return "id"; }
-        }
-    }
-}
+        /// <summary>
+        /// Set the revision id to request.
+        /// </summary>
+        [NotNull]
+        string SelectedRevisionId { set; }
+
+        /// <summary>
+        /// Request to update the state of the project to a provided revision. If revision is in the past, then the
+        /// state of the project at that point simply will be applied on top of the current without impacting history.
+     

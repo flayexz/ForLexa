@@ -1,10 +1,18 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.SocialPlatforms.Impl;
 
-public class Zombie : MonoBehaviour
+public class Zombie : MonoBehaviour, IEnemy
 {
+    public float heatsPerSecond;
+    private float AttackDelay => 1 / heatsPerSecond;
+    private float timePassed;
+    public float attackRange;
+    public double damageByHand;
     public int KillPoints;
     public double Health;
     public float Speed;
@@ -12,7 +20,7 @@ public class Zombie : MonoBehaviour
     private Rigidbody2D rbPlayer;
     private Player player;
     private ScoreManager scoreManager;
-
+    
     void Start()
     {
         player = FindObjectOfType<Player>();
@@ -28,6 +36,14 @@ public class Zombie : MonoBehaviour
             Destroy(gameObject);
             scoreManager.Score += KillPoints;
         }
+
+        if (timePassed > AttackDelay)
+        {
+            AttackPlayer(damageByHand);
+            timePassed = 0;
+        }
+        else
+            timePassed += Time.deltaTime;
     }
 
     private void FixedUpdate()
@@ -36,4 +52,9 @@ public class Zombie : MonoBehaviour
     }
 
     public void TakeDamage(double damage) => Health -= damage;
+    public void AttackPlayer(double damage)
+    {
+        Physics2D.OverlapCircleAll(transform.position, attackRange)
+            .Select(x => x.GetComponent<IPlayer>()).First(x => x != null).TakeDamage(damage);
+    }
 }

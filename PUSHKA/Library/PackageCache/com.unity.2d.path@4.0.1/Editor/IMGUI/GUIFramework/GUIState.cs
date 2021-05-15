@@ -1,156 +1,130 @@
-using UnityEngine;
-using UnityEditor;
+layerAssemblies, "Player projects", "For each player project generate an additional csproj with the name 'project-player.csproj'");
+			RegenerateProjectFiles();
+			EditorGUI.indentLevel--;
+		}
 
-namespace UnityEditor.U2D.Path.GUIFramework
-{
-    public class GUIState : IGUIState
-    {
-        private Handles.CapFunction nullCap = (int c, Vector3 p , Quaternion r, float s, EventType ev) => {};
+		void RegenerateProjectFiles()
+		{
+			var rect = EditorGUI.IndentedRect(EditorGUILayout.GetControlRect(new GUILayoutOption[] { }));
+			rect.width = 252;
+			if (GUI.Button(rect, "Regenerate project files"))
+			{
+				_generator.Sync();
+			}
+		}
 
-        public Vector2 mousePosition
-        {
-            get { return Event.current.mousePosition; }
-        }
+		void SettingsButton(ProjectGenerationFlag preference, string guiMessage, string toolTip)
+		{
+			var prevValue = _generator.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
+			var newValue = EditorGUILayout.Toggle(new GUIContent(guiMessage, toolTip), prevValue);
+			if (newValue != prevValue)
+			{
+				_generator.AssemblyNameProvider.ToggleProjectGeneration(preference);
+			}
+		}
 
-        public int mouseButton
-        {
-            get { return Event.current.button; }
-        }
+		public void SyncIfNeeded(string[] addedFiles, string[] deletedFiles, string[] movedFiles, string[] movedFromFiles, string[] importedFiles)
+		{
+			_generator.SyncIfNeeded(addedFiles.Union(deletedFiles).Union(movedFiles).Union(movedFromFiles), importedFiles);
 
-        public int clickCount
-        {
-            get { return Event.current.clickCount; }
-            set { Event.current.clickCount = Mathf.Max(0, value); }
-        }
+			foreach (var file in importedFiles.Where(a => Path.GetExtension(a) == ".pdb"))
+			{
+				var pdbFile = FileUtility.GetAssetFullPath(file);
 
-        public bool isShiftDown
-        {
-            get { return Event.current.shift; }
-        }
+				// skip Unity packages like com.unity.ext.nunit
+				if (pdbFile.IndexOf($"{Path.DirectorySeparatorChar}com.unity.", StringComparison.OrdinalIgnoreCase) > 0)
+					continue;
 
-        public bool isAltDown
-        {
-            get { return Event.current.alt; }
-        }
+				var asmFile = Path.ChangeExtension(pdbFile, ".dll");
+				if (!File.Exists(asmFile) || !Image.IsAssembly(asmFile))
+					continue;
 
-        public bool isActionKeyDown
-        {
-            get { return EditorGUI.actionKey; }
-        }
+				if (Symbols.IsPortableSymbolFile(pdbFile))
+					continue;
 
-        public KeyCode keyCode
-        {
-            get { return Event.current.keyCode; }
-        }
+				UnityEngine.Debug.LogWarning($"Unity is only able to load mdb or portable-pdb symbols. {file} is using a legacy pdb format.");
+			}
+		}
 
-        public EventType eventType
-        {
-            get { return Event.current.type; }
-        }
+		public void SyncAll()
+		{
+			AssetDatabase.Refresh();
+			_generator.Sync();
+		}
 
-        public string commandName
-        {
-            get { return Event.current.commandName; }
-        }
+		bool IsSupportedPath(string path)
+		{
+			// Path is empty with "Open C# Project", as we only want to open the solution without specific files
+			if (string.IsNullOrEmpty(path))
+				return true;
 
-        public int nearestControl
-        {
-            get { return HandleUtility.nearestControl; }
-            set { HandleUtility.nearestControl = value; }
-        }
+			// cs, uxml, uss, shader, compute, cginc, hlsl, glslinc, template are part of Unity builtin extensions
+			// txt, xml, fnt, cd are -often- par of Unity user extensions
+			// asdmdef is mandatory included
+			if (_generator.IsSupportedFile(path))
+				return true;
 
-        public int hotControl
-        {
-            get { return GUIUtility.hotControl; }
-            set { GUIUtility.hotControl = value; }
-        }
+			return false;
+		}
 
-        public bool changed
-        {
-            get { return GUI.changed; }
-            set { GUI.changed = value; }
-        }
+		private static void CheckCurrentEditorInstallation()
+		{
+			var editorPath = CodeEditor.CurrentEditorInstallation;
+			try
+			{
+				if (Discovery.TryDiscoverInstallation(editorPath, out _))
+					return;
+			}
+			catch (IOException)
+			{
+			}
 
-        public int GetControlID(int hint, FocusType focusType)
-        {
-            return GUIUtility.GetControlID(hint, focusType);
-        }
+			UnityEngine.Debug.LogWarning($"Visual Studio executable {editorPath} is not found. Please change your settings in Edit > Preferences > External Tools.");
+		}
 
-        public void AddControl(int controlID, float distance)
-        {
-            HandleUtility.AddControl(controlID, distance);
-        }
+		public bool OpenProject(string path, int line, int column)
+		{
+			CheckCurrentEditorInstallation();
 
-        public bool Slider(int id, SliderData sliderData, out Vector3 newPosition)
-        {
-            if (mouseButton == 0 && eventType == EventType.MouseDown)
-            {
-                hotControl = 0;
-                nearestControl = id;
-            }
+			if (!IsSupportedPath(path))
+				return false;
 
-            EditorGUI.BeginChangeCheck();
-            newPosition = Handles.Slider2D(id, sliderData.position, sliderData.forward, sliderData.right, sliderData.up, 1f, nullCap, Vector2.zero);
-            return EditorGUI.EndChangeCheck();
-        }
+			if (!IsProjectGeneratedFor(path, out var missingFlag))
+				UnityEngine.Debug.LogWarning($"You are trying to open {path} outside a generated project. This might cause problems with IntelliSense and debugging. To avoid this, you can change your .csproj preferences in Edit > Preferences > External Tools and enable {GetProjectGenerationFlagDescription(missingFlag)} generation.");
 
-        public void UseEvent()
-        {
-            Event.current.Use();
-        }
+			if (IsOSX)
+				return OpenOSXApp(path, line, column);
 
-        public void Repaint()
-        {
-            HandleUtility.Repaint();
-        }
+			if (IsWindows)
+				return OpenWindowsApp(path, line);
 
-        public bool HasCurrentCamera()
-        {
-            return Camera.current != null;
-        }
+			return false;
+		}
 
-        public float GetHandleSize(Vector3 position)
-        {
-            var scale = HasCurrentCamera() ? 0.01f : 0.05f;
-            return HandleUtility.GetHandleSize(position) * scale;
-        }
+		private static string GetProjectGenerationFlagDescription(ProjectGenerationFlag flag)
+		{
+			switch (flag)
+			{
+				case ProjectGenerationFlag.BuiltIn:
+					return "Built-in packages";
+				case ProjectGenerationFlag.Embedded:
+					return "Embedded packages";
+				case ProjectGenerationFlag.Git:
+					return "Git packages";
+				case ProjectGenerationFlag.Local:
+					return "Local packages";
+				case ProjectGenerationFlag.LocalTarBall:
+					return "Local tarball";
+				case ProjectGenerationFlag.PlayerAssemblies:
+					return "Player projects";
+				case ProjectGenerationFlag.Registry:
+					return "Registry packages";
+				case ProjectGenerationFlag.Unknown:
+					return "Packages from unknown sources";
+				case ProjectGenerationFlag.None:
+				default:
+					return string.Empty;
+			}
+		}
 
-        public float DistanceToSegment(Vector3 p1, Vector3 p2)
-        {
-            p1 = HandleUtility.WorldToGUIPoint(p1);
-            p2 = HandleUtility.WorldToGUIPoint(p2);
-
-            return HandleUtility.DistancePointToLineSegment(Event.current.mousePosition, p1, p2);
-        }
-        
-        public float DistanceToCircle(Vector3 center, float radius)
-        {
-            return HandleUtility.DistanceToCircle(center, radius);
-        }
-
-        public Vector3 GUIToWorld(Vector2 guiPosition, Vector3 planeNormal, Vector3 planePos)
-        {
-            Vector3 worldPos = Handles.inverseMatrix.MultiplyPoint(guiPosition);
-
-            if (Camera.current)
-            {
-                Ray ray = HandleUtility.GUIPointToWorldRay(guiPosition);
-
-                planeNormal = Handles.matrix.MultiplyVector(planeNormal);
-
-                planePos = Handles.matrix.MultiplyPoint(planePos);
-
-                Plane plane = new Plane(planeNormal, planePos);
-
-                float distance = 0f;
-
-                if (plane.Raycast(ray, out distance))
-                {
-                    worldPos = Handles.inverseMatrix.MultiplyPoint(ray.GetPoint(distance));
-                }
-            }
-
-            return worldPos;
-        }
-    }
-}
+		private bool IsProjectGeneratedFor(string path, 

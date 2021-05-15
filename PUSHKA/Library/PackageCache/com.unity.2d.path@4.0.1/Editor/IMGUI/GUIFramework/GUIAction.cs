@@ -1,112 +1,103 @@
-﻿using System;
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Unity Technologies.
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using UnityEditor;
 using UnityEngine;
+using Unity.CodeEditor;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 
-namespace UnityEditor.U2D.Path.GUIFramework
+[assembly: InternalsVisibleTo("Unity.VisualStudio.EditorTests")]
+[assembly: InternalsVisibleTo("Unity.VisualStudio.Standalone.EditorTests")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
+
+namespace Microsoft.Unity.VisualStudio.Editor
 {
-    public abstract class GUIAction
-    {
-        private int m_ID = -1;
+	[InitializeOnLoad]
+	public class VisualStudioEditor : IExternalCodeEditor
+	{
+		private static readonly IVisualStudioInstallation[] _installations;
 
-        public Func<IGUIState, GUIAction, bool> enable;
-        public Func<IGUIState, GUIAction, bool> enableRepaint;
-        public Func<IGUIState, GUIAction, bool> repaintOnMouseMove;
-        public Action<IGUIState, GUIAction> onPreRepaint;
-        public Action<IGUIState, GUIAction> onRepaint;
+		internal static bool IsOSX => Application.platform == RuntimePlatform.OSXEditor;
+		internal static bool IsWindows => !IsOSX && Path.DirectorySeparatorChar == FileUtility.WinSeparator && Environment.NewLine == "\r\n";
 
-        public int ID
-        {
-            get { return m_ID; }
-        }
+		CodeEditor.Installation[] IExternalCodeEditor.Installations => _installations
+			.Select(i => i.ToCodeEditorInstallation())
+			.ToArray();
 
-        public void OnGUI(IGUIState guiState)
-        {
-            m_ID = guiState.GetControlID(GetType().GetHashCode(), FocusType.Passive);
+		private readonly IGenerator _generator = new ProjectGeneration();
 
-            if (guiState.hotControl == 0 && IsEnabled(guiState) && CanTrigger(guiState) && GetTriggerContidtion(guiState))
-            {
-                guiState.hotControl = ID;
-                OnTrigger(guiState);
-            }
+		static VisualStudioEditor()
+		{
+			try
+			{
+				_installations = Discovery
+					.GetVisualStudioInstallations()
+					.ToArray();
+			}
+			catch (Exception ex)
+			{
+				UnityEngine.Debug.LogError($"Error detecting Visual Studio installations: {ex}");
+				_installations = Array.Empty<VisualStudioInstallation>();
+			}
 
-            if (guiState.hotControl == ID)
-            {
-                if (GetFinishContidtion(guiState))
-                {
-                    OnFinish(guiState);
-                    guiState.hotControl = 0;
-                }
-                else
-                {
-                    OnPerform(guiState);
-                }
-            }
+			CodeEditor.Register(new VisualStudioEditor());
+		}
 
-            if (guiState.eventType == EventType.Repaint && IsRepaintEnabled(guiState))
-                Repaint(guiState);
-        }
+		internal static bool IsEnabled
+		{
+			get
+			{
+				return CodeEditor.CurrentEditor is VisualStudioEditor;
+			}
+		}
 
-        public bool IsEnabled(IGUIState guiState)
-        {
-            if (enable != null)
-                return enable(guiState, this);
+		public void CreateIfDoesntExist()
+		{
+			if (!_generator.HasSolutionBeenGenerated())
+				_generator.Sync();
+		}
 
-            return true;
-        }
+		public void Initialize(string editorInstallationPath)
+		{
+		}
 
-        public bool IsRepaintEnabled(IGUIState guiState)
-        {
-            if (!IsEnabled(guiState))
-                return false;
+		internal virtual bool TryGetVisualStudioInstallationForPath(string editorPath, out IVisualStudioInstallation installation)
+		{
+			// lookup for well known installations
+			foreach (var candidate in _installations)
+			{
+				if (!string.Equals(Path.GetFullPath(editorPath), Path.GetFullPath(candidate.Path), StringComparison.OrdinalIgnoreCase))
+					continue;
 
-            if (enableRepaint != null)
-                return enableRepaint(guiState, this);
+				installation = candidate;
+				return true;
+			}
 
-            return true;
-        }
+			return Discovery.TryDiscoverInstallation(editorPath, out installation);
+		}
 
-        public void PreRepaint(IGUIState guiState)
-        {
-            Debug.Assert(guiState.eventType == EventType.Repaint);
+		public virtual bool TryGetInstallationForPath(string editorPath, out CodeEditor.Installation installation)
+		{
+			var result = TryGetVisualStudioInstallationForPath(editorPath, out var vsi);
+			installation = vsi == null ? default : vsi.ToCodeEditorInstallation();
+			return result;
+		}
 
-            if (IsEnabled(guiState) && onPreRepaint != null)
-                onPreRepaint(guiState, this);
-        }
+		public void OnGUI()
+		{
+			GUILayout.BeginHorizontal();
+			GUILayout.FlexibleSpace();
 
-        private void Repaint(IGUIState guiState)
-        {
-            Debug.Assert(guiState.eventType == EventType.Repaint);
-            
-            if (onRepaint != null)
-                onRepaint(guiState, this);
-        }
+			var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(GetType().Assembly);
 
-        internal bool IsRepaintOnMouseMoveEnabled(IGUIState guiState)
-        {
-            if (!IsEnabled(guiState) || !IsRepaintEnabled(guiState))
-                return false;
-
-            if (repaintOnMouseMove != null)
-                return repaintOnMouseMove(guiState, this);
-
-            return false;
-        }
-
-        protected abstract bool GetFinishContidtion(IGUIState guiState);
-        protected abstract bool GetTriggerContidtion(IGUIState guiState);
-        protected virtual bool CanTrigger(IGUIState guiState) { return true; }
-        protected virtual void OnTrigger(IGUIState guiState)
-        {
-            
-        }
-
-        protected virtual void OnPerform(IGUIState guiState)
-        {
-
-        }
-
-        protected virtual void OnFinish(IGUIState guiState)
-        {
-            
-        }
-    }
-}
+			var style = new GUIStyle
+			{
+				richText = true,
+				marg

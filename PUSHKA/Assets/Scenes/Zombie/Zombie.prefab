@@ -123,6 +123,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9740a3c30e956124285d72c1e10727e8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  heatsPerSecond: 1
+  attackRange: 1
+  damageByHand: 20
   KillPoints: 1
   Health: 3
   Speed: 3

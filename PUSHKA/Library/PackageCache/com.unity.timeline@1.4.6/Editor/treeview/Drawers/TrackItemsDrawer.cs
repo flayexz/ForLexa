@@ -1,38 +1,16 @@
-using System.Collections.Generic;
-using UnityEngine;
-
-namespace UnityEditor.Timeline
-{
-    struct TrackItemsDrawer
-    {
-        List<ILayer> m_Layers;
-        ClipsLayer m_ClipsLayer;
-
-        public List<TimelineClipGUI> clips => m_ClipsLayer.items;
-
-        public TrackItemsDrawer(IRowGUI parent)
-        {
-            m_Layers = null;
-            m_ClipsLayer = null;
-            BuildGUICache(parent);
-        }
-
-        void BuildGUICache(IRowGUI parent)
-        {
-            m_ClipsLayer = new ClipsLayer(Layer.Clips, parent);
-            m_Layers = new List<ILayer>
-            {
-                m_ClipsLayer,
-                new MarkersLayer(Layer.Markers, parent)
-            };
-        }
-
-        public void Draw(Rect rect, WindowState state)
-        {
-            foreach (var layer in m_Layers)
-            {
-                layer.Draw(rect, state);
-            }
-        }
-    }
-}
+* [About Timeline](index.md)
+    * [Timeline overview](tl_about.md)
+    * [Using the Timeline window](wf_about.md)
+        * [Creating a Timeline Asset and Timeline instance](wf_instance.md)
+        * [Recording basic animation with an Infinite clip](wf_rec_anim.md)
+        * [Converting an Infinite clip to an Animation clip](wf_conv_infinite.md)
+        * [Animating a humanoid](wf_char_anim.md)
+        * [Using an Animation Override track and Avatar masking](wf_mask.md)
+        * [Nesting Timeline instances](wf_nested.md)
+    * [Timeline window](tl_window.md)
+        * [Timeline Preview and Timeline Selector](tl_selector.md)
+        * [Timeline Playback Controls](tl_play_cntrls.md)
+        * [Track List and Track Headers](trk_list_about.md)
+            * [Adding Tracks](trk_add.md)
+            * [Selecting Tracks](trk_select.md)
+            * [Duplicating Tracks](trk_du

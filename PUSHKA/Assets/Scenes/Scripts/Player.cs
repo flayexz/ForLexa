@@ -3,14 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
-public class Player : MonoBehaviour
+public class Player : MonoBehaviour,IPlayer
 {
     [SerializeField] private float speed;
-    
+    public double health;
     private Rigidbody2D player;
-    
+    public Text hpDisplay;
     [Header(("Weapons"))]
     [SerializeField] private List<Gun> unlockedWeapons;
     [SerializeField] private Gun[] allWeapons;
@@ -32,6 +33,7 @@ public class Player : MonoBehaviour
     private void FixedUpdate()
     {
         Move();
+        hpDisplay.text = "HP: " + health;
     }
     
 
@@ -78,5 +80,10 @@ public class Player : MonoBehaviour
         unlockedWeapons[currentNumberOfGun].gameObject.SetActive(false);
         currentNumberOfGun = (currentNumberOfGun + 1) % unlockedWeapons.Count;
         unlockedWeapons[currentNumberOfGun].gameObject.SetActive(true);
+    }
+
+    public void TakeDamage(double damage)
+    {
+        health -= damage;
     }
 }

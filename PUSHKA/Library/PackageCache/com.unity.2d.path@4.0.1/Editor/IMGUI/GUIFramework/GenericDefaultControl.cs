@@ -1,58 +1,45 @@
-﻿using System;
+﻿/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using Microsoft.Unity.VisualStudio.Editor.Messaging;
+using Microsoft.Unity.VisualStudio.Editor.Testing;
+using UnityEditor;
 using UnityEngine;
+using MessageType = Microsoft.Unity.VisualStudio.Editor.Messaging.MessageType;
 
-namespace UnityEditor.U2D.Path.GUIFramework
+namespace Microsoft.Unity.VisualStudio.Editor
 {
-    public class GenericDefaultControl : DefaultControl
-    {
-        public Func<IGUIState, Vector3> position;
-        public Func<IGUIState, Vector3> forward;
-        public Func<IGUIState, Vector3> up;
-        public Func<IGUIState, Vector3> right;
-        public Func<IGUIState, object> userData;
+	[InitializeOnLoad]
+	internal class VisualStudioIntegration
+	{
+		class Client
+		{
+			public IPEndPoint EndPoint { get; set; }
+			public DateTime LastMessage { get; set; }
+		}
 
-        public GenericDefaultControl(string name) : base(name)
-        {
-        }
+		private static Messager _messager;
 
-        protected override Vector3 GetPosition(IGUIState guiState, int index)
-        {
-            if (position != null)
-                return position(guiState);
+		private static readonly Queue<Message> _incoming = new Queue<Message>();
+		private static readonly Dictionary<IPEndPoint, Client> _clients = new Dictionary<IPEndPoint, Client>();
+		private static readonly object _incomingLock = new object();
+		private static readonly object _clientsLock = new object();
 
-            return base.GetPosition(guiState, index);
-        }
+		static VisualStudioIntegration()
+		{
+			if (!VisualStudioEditor.IsEnabled)
+				return;
 
-        protected override Vector3 GetForward(IGUIState guiState, int index)
-        {
-            if (forward != null)
-                return forward(guiState);
-
-            return base.GetForward(guiState, index);
-        }
-
-        protected override Vector3 GetUp(IGUIState guiState, int index)
-        {
-            if (up != null)
-                return up(guiState);
-
-            return base.GetUp(guiState, index);
-        }
-
-        protected override Vector3 GetRight(IGUIState guiState, int index)
-        {
-            if (right != null)
-                return right(guiState);
-
-            return base.GetRight(guiState, index);
-        }
-
-        protected override object GetUserData(IGUIState guiState, int index)
-        {
-            if (userData != null)
-                return userData(guiState);
-            
-            return base.GetUserData(guiState, index);
-        }
-    }
-}
+			RunOnceOnUpdate(() =>
+			{
+				// Despite using ReuseAddress|!ExclusiveAddressUse, we can fail here:
+				// - if another application is using this port with exclusive access
+				// - or if the firewall is not properly configured
+				var messagingPor

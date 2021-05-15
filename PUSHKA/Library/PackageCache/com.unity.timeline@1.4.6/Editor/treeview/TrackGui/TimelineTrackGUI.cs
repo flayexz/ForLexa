@@ -1,859 +1,675 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using UnityEditor.IMGUI.Controls;
-using UnityEngine;
-using UnityEngine.Timeline;
-using UnityEngine.Playables;
-using Object = UnityEngine.Object;
-
-namespace UnityEditor.Timeline
-{
-    class TimelineTrackGUI : TimelineGroupGUI, IClipCurveEditorOwner, IRowGUI
-    {
-        struct TrackDrawData
-        {
-            public bool                 m_AllowsRecording;
-            public bool                 m_ShowTrackBindings;
-            public bool                 m_HasBinding;
-            public bool                 m_IsSubTrack;
-            public PlayableBinding      m_Binding;
-            public Object               m_TrackBinding;
-            public Texture              m_TrackIcon;
-            public bool                 m_HasMarkers;
-        }
-
-        static class Styles
-        {
-            public static readonly GUIContent trackCurvesBtnOnTooltip = DirectorStyles.TrTextContent(string.Empty, "Hide curves view");
-            public static readonly GUIContent trackCurvesBtnOffTooltip = DirectorStyles.TrTextContent(string.Empty, "Show curves view");
-            public static readonly GUIContent trackMarkerBtnOnTooltip = DirectorStyles.TrTextContent(string.Empty, "Collapse Track Markers");
-            public static readonly GUIContent trackMarkerBtnOffTooltip = DirectorStyles.TrTextContent(string.Empty, "Expand Track Markers");
-
-            public static readonly GUIContent kActiveRecordButtonTooltip = DirectorStyles.TrTextContent(string.Empty, "End recording");
-            public static readonly GUIContent kInactiveRecordButtonTooltip = DirectorStyles.TrTextContent(string.Empty, "Start recording");
-            public static readonly GUIContent kIgnorePreviewRecordButtonTooltip = DirectorStyles.TrTextContent(string.Empty, "Recording is disabled: scene preview is ignored for this TimelineAsset");
-            public static readonly GUIContent kDisabledRecordButtonTooltip = DirectorStyles.TrTextContent(string.Empty,
-                "Recording is not permitted when Track Offsets are set to Auto. Track Offset settings can be changed in the track menu of the base track.");
-            public static Texture2D kProblemIcon = DirectorStyles.GetBackgroundImage(DirectorStyles.Instance.warning);
-        }
-
-        static GUIContent s_ArmForRecordContentOn;
-        static GUIContent s_ArmForRecordContentOff;
-        static GUIContent s_ArmForRecordDisabled;
-
-        readonly InfiniteTrackDrawer    m_InfiniteTrackDrawer;
-        readonly TrackEditor            m_TrackEditor;
-        readonly GUIContent             m_DefaultTrackIcon;
-        readonly TrackResizeHandle      m_ResizeHandle;
-
-        TrackItemsDrawer                m_ItemsDrawer;
-        TrackDrawData                   m_TrackDrawData;
-        TrackDrawOptions                m_TrackDrawOptions;
-
-        bool m_InlineCurvesSkipped;
-        int m_TrackHash = -1;
-        int m_BlendHash = -1;
-        int m_LastDirtyIndex = -1;
-
-        bool? m_TrackHasAnimatableParameters;
-        int m_HeightExtension;
-
-        public override bool expandable
-        {
-            get { return hasChildren; }
-        }
-
-        internal InlineCurveEditor inlineCurveEditor { get; set; }
-
-        public ClipCurveEditor clipCurveEditor { get; private set; }
-
-        public bool inlineCurvesSelected => SelectionManager.IsCurveEditorFocused(this);
-
-        bool IClipCurveEditorOwner.showLoops
-        {
-            get { return false; }
-        }
-
-        TrackAsset IClipCurveEditorOwner.owner
-        {
-            get { return track; }
-        }
-
-        static bool DoesTrackAllowsRecording(TrackAsset track)
-        {
-            // if the root animation track is in auto mode, recording is not allowed
-            var animTrack = TimelineUtility.GetSceneReferenceTrack(track) as AnimationTrack;
-            if (animTrack != null)
-                return animTrack.trackOffset != TrackOffset.Auto;
-
+;
+                    w = (int)ti.wrapModeW;
+                }
+                u = Mathf.Max(0, u);
+                v = Mathf.Max(0, v);
+                w = Mathf.Max(0, w);
+                if (u != v)
+                {
+                    return true;
+                }
+                if (isVolumeTexture)
+                {
+                    if (u != w || v != w)
+                    {
+                        return true;
+                    }
+                }
+            }
             return false;
         }
 
-        bool trackHasAnimatableParameters
+        // showPerAxisWrapModes is state of whether "Per-Axis" mode should be active in the main dropdown.
+        // It is set automatically if wrap modes in UVW are different, or if user explicitly picks "Per-Axis" option -- when that one is picked,
+        // then it should stay true even if UVW wrap modes will initially be the same.
+        //
+        // Note: W wrapping mode is only shown when isVolumeTexture is true.
+        internal static void WrapModePopup(SerializedProperty wrapU, SerializedProperty wrapV, SerializedProperty wrapW, bool isVolumeTexture, ref bool showPerAxisWrapModes)
         {
-            get
+            if (s_Styles == null)
+                s_Styles = new Styles();
+
+            // In texture importer settings, serialized properties for things like wrap modes can contain -1;
+            // that seems to indicate "use defaults, user has not changed them to anything" but not totally sure.
+            // Show them as Repeat wrap modes in the popups.
+            var wu = (TextureWrapMode)Mathf.Max(wrapU.intValue, 0);
+            var wv = (TextureWrapMode)Mathf.Max(wrapV.intValue, 0);
+            var ww = (TextureWrapMode)Mathf.Max(wrapW.intValue, 0);
+
+            // automatically go into per-axis mode if values are already different
+            if (wu != wv)
+                showPerAxisWrapModes = true;
+            if (isVolumeTexture)
             {
-                // cache this value to avoid the recomputation
-                if (!m_TrackHasAnimatableParameters.HasValue)
-                    m_TrackHasAnimatableParameters = track.HasAnyAnimatableParameters() ||
-                        track.clips.Any(c => c.HasAnyAnimatableParameters());
-
-                return m_TrackHasAnimatableParameters.Value;
-            }
-        }
-
-        public bool locked
-        {
-            get { return track.lockedInHierarchy; }
-        }
-
-        public bool showMarkers
-        {
-            get { return track.GetShowMarkers(); }
-        }
-
-        public bool muted
-        {
-            get { return track.muted; }
-        }
-
-        public List<TimelineClipGUI> clips
-        {
-            get
-            {
-                return m_ItemsDrawer.clips == null ? new List<TimelineClipGUI>(0) : m_ItemsDrawer.clips;
-            }
-        }
-
-        TrackAsset IRowGUI.asset { get { return track; } }
-
-        bool showTrackRecordingDisabled
-        {
-            get
-            {
-                // if the root animation track is in auto mode, recording is not allowed
-                var animTrack = TimelineUtility.GetSceneReferenceTrack(track) as AnimationTrack;
-                return animTrack != null && animTrack.trackOffset == TrackOffset.Auto;
-            }
-        }
-
-        public int heightExtension
-        {
-            get => m_HeightExtension;
-            set => m_HeightExtension = Math.Max(0, value);
-        }
-
-        float minimumHeight => m_TrackDrawOptions.minimumHeight <= 0.0f ? TrackEditor.DefaultTrackHeight : m_TrackDrawOptions.minimumHeight;
-
-        public TimelineTrackGUI(TreeViewController tv, TimelineTreeViewGUI w, int id, int depth, TreeViewItem parent, string displayName, TrackAsset sequenceActor)
-            : base(tv, w, id, depth, parent, displayName, sequenceActor, false)
-        {
-            var animationTrack = sequenceActor as AnimationTrack;
-            if (animationTrack != null)
-                m_InfiniteTrackDrawer = new InfiniteTrackDrawer(new AnimationTrackKeyDataSource(animationTrack));
-            else if (sequenceActor.HasAnyAnimatableParameters() && !sequenceActor.clips.Any())
-                m_InfiniteTrackDrawer = new InfiniteTrackDrawer(new TrackPropertyCurvesDataSource(sequenceActor));
-
-            UpdateInfiniteClipEditor(w.TimelineWindow);
-
-            var bindings = track.outputs.ToArray();
-            m_TrackDrawData.m_HasBinding = bindings.Length > 0;
-            if (m_TrackDrawData.m_HasBinding)
-                m_TrackDrawData.m_Binding = bindings[0];
-            m_TrackDrawData.m_IsSubTrack = IsSubTrack();
-            m_TrackDrawData.m_AllowsRecording = DoesTrackAllowsRecording(sequenceActor);
-            m_TrackDrawData.m_HasMarkers = track.GetMarkerCount() > 0;
-            m_DefaultTrackIcon = TrackResourceCache.GetTrackIcon(track);
-
-            m_TrackEditor = CustomTimelineEditorCache.GetTrackEditor(sequenceActor);
-
-            try
-            {
-                m_TrackDrawOptions = m_TrackEditor.GetTrackOptions(track, null);
-            }
-            catch (Exception e)
-            {
-                Debug.LogException(e);
-                m_TrackDrawOptions = CustomTimelineEditorCache.GetDefaultTrackEditor().GetTrackOptions(track, null);
+                if (wu != ww || wv != ww)
+                    showPerAxisWrapModes = true;
             }
 
-            m_TrackDrawOptions.errorText = null; // explicitly setting to null for an uninitialized state
-            m_ResizeHandle = new TrackResizeHandle(this);
-            heightExtension = TimelineWindowViewPrefs.GetTrackHeightExtension(track);
-
-            RebuildGUICacheIfNecessary();
-        }
-
-        public override float GetVerticalSpacingBetweenTracks()
-        {
-            if (track != null && track.isSubTrack)
-                return 1.0f; // subtracks have less of a gap than tracks
-            return base.GetVerticalSpacingBetweenTracks();
-        }
-
-        void UpdateInfiniteClipEditor(TimelineWindow window)
-        {
-            if (clipCurveEditor != null || track == null || !ShouldShowInfiniteClipEditor())
-                return;
-
-            var dataSource = CurveDataSource.Create(this);
-            clipCurveEditor = new ClipCurveEditor(dataSource, window, track);
-        }
-
-        void DetectTrackChanged()
-        {
-            if (Event.current.type == EventType.Layout)
+            // It's not possible to determine whether any single texture in the whole selection is using per-axis wrap modes
+            // just from SerializedProperty values. They can only tell if "some values in whole selection are different" (e.g.
+            // wrap value on U axis is not the same among all textures), and can return value of "some" object in the selection
+            // (typically based on object loading order). So in order for more intuitive behavior with multi-selection,
+            // we go over the actual objects when there's >1 object selected and some wrap modes are different.
+            if (!showPerAxisWrapModes)
             {
-                // incremented when a track or it's clips changed
-                if (m_LastDirtyIndex != track.DirtyIndex)
+                if (wrapU.hasMultipleDifferentValues || wrapV.hasMultipleDifferentValues || (isVolumeTexture && wrapW.hasMultipleDifferentValues))
                 {
-                    try
+                    if (IsAnyTextureObjectUsingPerAxisWrapMode(wrapU.serializedObject.targetObjects, isVolumeTexture))
                     {
-                        m_TrackEditor.OnTrackChanged(track);
+                        showPerAxisWrapModes = true;
                     }
-                    catch (Exception e)
-                    {
-                        Debug.LogException(e);
-                    }
-                    m_LastDirtyIndex = track.DirtyIndex;
                 }
-                OnTrackChanged();
-            }
-        }
-
-        // Called when the source track data, including it's clips have changed has changed.
-        void OnTrackChanged()
-        {
-            // recompute blends if necessary
-            int newBlendHash = BlendHash();
-            if (m_BlendHash != newBlendHash)
-            {
-                UpdateClipOverlaps();
-                m_BlendHash = newBlendHash;
             }
 
-            RebuildGUICacheIfNecessary();
-        }
+            int value = showPerAxisWrapModes ? -1 : (int)wu;
 
-        void UpdateDrawData(WindowState state)
-        {
-            if (Event.current.type == EventType.Layout)
-            {
-                m_TrackDrawData.m_ShowTrackBindings = false;
-                m_TrackDrawData.m_TrackBinding = null;
-
-                if (state.editSequence.director != null && showSceneReference)
-                {
-                    m_TrackDrawData.m_ShowTrackBindings = state.GetWindow().currentMode.ShouldShowTrackBindings(state);
-                    m_TrackDrawData.m_TrackBinding = state.editSequence.director.GetGenericBinding(track);
-                }
-
-                var lastHeight = m_TrackDrawOptions.minimumHeight;
-                try
-                {
-                    m_TrackDrawOptions = m_TrackEditor.GetTrackOptions(track, m_TrackDrawData.m_TrackBinding);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                    m_TrackDrawOptions = CustomTimelineEditorCache.GetDefaultTrackEditor().GetTrackOptions(track, m_TrackDrawData.m_TrackBinding);
-                }
-
-                m_TrackDrawData.m_HasMarkers = track.GetMarkerCount() > 0;
-                m_TrackDrawData.m_AllowsRecording = DoesTrackAllowsRecording(track);
-                m_TrackDrawData.m_TrackIcon = m_TrackDrawOptions.icon;
-                if (m_TrackDrawData.m_TrackIcon == null)
-                    m_TrackDrawData.m_TrackIcon = m_DefaultTrackIcon.image;
-
-                // track height has changed. need to update gui
-                if (!Mathf.Approximately(lastHeight, m_TrackDrawOptions.minimumHeight))
-                    state.Refresh();
-            }
-        }
-
-        public override void Draw(Rect headerRect, Rect contentRect, WindowState state)
-        {
-            DetectTrackChanged();
-            UpdateDrawData(state);
-
-            UpdateInfiniteClipEditor(state.GetWindow());
-
-            var trackHeaderRect = headerRect;
-            var trackContentRect = contentRect;
-
-            float inlineCurveHeight = contentRect.height - GetTrackContentHeight(state);
-            bool hasInlineCurve = inlineCurveHeight > 0.0f;
-
-            if (hasInlineCurve)
-            {
-                trackHeaderRect.height -= inlineCurveHeight;
-                trackContentRect.height -= inlineCurveHeight;
-            }
-
-            if (Event.current.type == EventType.Repaint)
-            {
-                m_TreeViewRect = trackContentRect;
-            }
-
-            track.SetCollapsed(!isExpanded);
-
-            RebuildGUICacheIfNecessary();
-
-            // Prevents from drawing outside of bounds, but does not effect layout or markers
-            bool isOwnerDrawSucceed = false;
-
-            Vector2 visibleTime = state.timeAreaShownRange;
-
-            if (drawer != null)
-                isOwnerDrawSucceed = drawer.DrawTrack(trackContentRect, track, visibleTime, state);
-
-            if (!isOwnerDrawSucceed)
-            {
-                using (new GUIViewportScope(trackContentRect))
-                    DrawBackground(trackContentRect, track, visibleTime, state);
-
-                if (m_InfiniteTrackDrawer != null)
-                    m_InfiniteTrackDrawer.DrawTrack(trackContentRect, track, visibleTime, state);
-
-                // draw after user customization so overlay text shows up
-                using (new GUIViewportScope(trackContentRect))
-                    m_ItemsDrawer.Draw(trackContentRect, state);
-            }
-
-            DrawTrackHeader(trackHeaderRect, state);
-
-            if (hasInlineCurve)
-            {
-                var curvesHeaderRect = headerRect;
-                curvesHeaderRect.yMin = trackHeaderRect.yMax;
-
-                var curvesContentRect = contentRect;
-                curvesContentRect.yMin = trackContentRect.yMax;
-
-                DrawInlineCurves(curvesHeaderRect, curvesContentRect, state);
-            }
-
-            DrawTrackColorKind(headerRect);
-            DrawTrackState(contentRect, contentRect, track);
-        }
-
-        void DrawInlineCurves(Rect curvesHeaderRect, Rect curvesContentRect, WindowState state)
-        {
-            if (!track.GetShowInlineCurves())
-                return;
-
-            // Inline curves are not within the editor window -- case 952571
-            if (!IsInlineCurvesEditorInBounds(ToWindowSpace(curvesHeaderRect), curvesContentRect.height, state))
-            {
-                m_InlineCurvesSkipped = true;
-                return;
-            }
-
-            // If inline curves were skipped during the last event; we want to avoid rendering them until
-            // the next Layout event. Otherwise, we still get the RTE prevented above when the user resizes
-            // the timeline window very fast. -- case 952571
-            if (m_InlineCurvesSkipped && Event.current.type != EventType.Layout)
-                return;
-
-            m_InlineCurvesSkipped = false;
-
-            if (inlineCurveEditor == null)
-                inlineCurveEditor = new InlineCurveEditor(this);
-
-
-            curvesHeaderRect.x += DirectorStyles.kBaseIndent;
-            curvesHeaderRect.width -= DirectorStyles.kBaseIndent;
-
-            inlineCurveEditor.Draw(curvesHeaderRect, curvesContentRect, state);
-        }
-
-        static bool IsInlineCurvesEditorInBounds(Rect windowSpaceTrackRect, float inlineCurveHeight, WindowState state)
-        {
-            var legalHeight = state.windowHeight;
-            var trackTop = windowSpaceTrackRect.y;
-            var inlineCurveOffset = windowSpaceTrackRect.height - inlineCurveHeight;
-            return legalHeight - trackTop - inlineCurveOffset > 0;
-        }
-
-        void DrawErrorIcon(Rect position, WindowState state)
-        {
-            Rect bindingLabel = position;
-            bindingLabel.x = position.xMax + 3;
-            bindingLabel.width = state.bindingAreaWidth;
-            EditorGUI.LabelField(position, m_ProblemIcon);
-        }
-
-        void DrawBackground(Rect trackRect, TrackAsset trackAsset, Vector2 visibleTime, WindowState state)
-        {
-            bool canDrawRecordBackground = IsRecording(state);
-            if (canDrawRecordBackground)
-            {
-                DrawRecordingTrackBackground(trackRect, trackAsset, visibleTime, state);
-            }
-            else
-            {
-                Color trackBackgroundColor;
-
-                if (SelectionManager.Contains(track))
-                {
-                    trackBackgroundColor = state.IsEditingASubTimeline() ?
-                        DirectorStyles.Instance.customSkin.colorTrackSubSequenceBackgroundSelected :
-                        DirectorStyles.Instance.customSkin.colorTrackBackgroundSelected;
-                }
-                else
-                {
-                    trackBackgroundColor = state.IsEditingASubTimeline() ?
-                        DirectorStyles.Instance.customSkin.colorTrackSubSequenceBackground :
-                        DirectorStyles.Instance.customSkin.colorTrackBackground;
-                }
-
-                EditorGUI.DrawRect(trackRect, trackBackgroundColor);
-            }
-        }
-
-        float InlineCurveHeight()
-        {
-            return track.GetShowInlineCurves() && CanDrawInlineCurve()
-                ? TimelineWindowViewPrefs.GetInlineCurveHeight(track)
-                : 0.0f;
-        }
-
-        public override float GetHeight(WindowState state)
-        {
-            var height = GetTrackContentHeight(state);
-
-            if (CanDrawInlineCurve())
-                height += InlineCurveHeight();
-
-            return height;
-        }
-
-        float GetTrackContentHeight(WindowState state)
-        {
-            var defaultHeight = Mathf.Min(minimumHeight, TrackEditor.MaximumTrackHeight);
-            return (defaultHeight + heightExtension) * state.trackScale;
-        }
-
-        static bool CanDrawIcon(GUIContent icon)
-        {
-            return icon != null && icon != GUIContent.none && icon.image != null;
-        }
-
-        bool showSceneReference
-        {
-            get
-            {
-                return track != null &&
-                    m_TrackDrawData.m_HasBinding &&
-                    !m_TrackDrawData.m_IsSubTrack &&
-                    m_TrackDrawData.m_Binding.sourceObject != null &&
-                    m_TrackDrawData.m_Binding.outputTargetType != null &&
-                    typeof(Object).IsAssignableFrom(m_TrackDrawData.m_Binding.outputTargetType);
-            }
-        }
-
-        void DrawTrackHeader(Rect trackHeaderRect, WindowState state)
-        {
-            using (new GUIViewportScope(trackHeaderRect))
-            {
-                var rect = trackHeaderRect;
-
-                DrawHeaderBackground(trackHeaderRect);
-                rect.x += m_Styles.trackSwatchStyle.fixedWidth;
-
-                const float buttonSize = WindowConstants.trackHeaderButtonSize;
-                const float padding = WindowConstants.trackHeaderButtonPadding;
-                var buttonRect = new Rect(trackHeaderRect.xMax - buttonSize - padding, rect.y + (rect.height - buttonSize) / 2f, buttonSize, buttonSize);
-
-                rect.x += DrawTrackIconKind(rect, state);
-
-                if (track is GroupTrack)
-                    return;
-
-                buttonRect.x -= DrawTrackDropDownMenu(buttonRect);
-                var suiteRect = DrawGeneralSuite(state, buttonRect);
-                suiteRect = DrawCustomSuite(state, suiteRect);
-
-                var bindingRect = new Rect(rect.x, rect.y, suiteRect.xMax - rect.x, rect.height);
-                DrawTrackBinding(bindingRect, trackHeaderRect);
-            }
-
-            m_ResizeHandle.Draw(trackHeaderRect, state);
-        }
-
-        Rect DrawGeneralSuite(WindowState state, Rect rect)
-        {
-            const float buttonWidth = WindowConstants.trackHeaderButtonSize + WindowConstants.trackHeaderButtonPadding;
-            var padding = DrawButtonSuite(3, ref rect);
-
-            DrawMuteButton(rect, state);
-            rect.x -= buttonWidth;
-            DrawLockButton(rect, state);
-            rect.x -= buttonWidth;
-            DrawLockMarkersButton(rect, state);
-            rect.x -= buttonWidth;
-
-            rect.x -= padding;
-            return rect;
-        }
-
-        Rect DrawCustomSuite(WindowState state, Rect rect)
-        {
-            var numberOfButtons = 0;
-            if (m_TrackDrawData.m_AllowsRecording || showTrackRecordingDisabled)
-                numberOfButtons++;
-            if (CanDrawInlineCurve())
-                numberOfButtons++;
-            if (drawer.HasCustomTrackHeaderButton())
-                numberOfButtons++;
-            if (numberOfButtons == 0)
-                return rect;
-
-            var padding = DrawButtonSuite(numberOfButtons, ref rect);
-
-            rect.x -= DrawRecordButton(rect, state);
-            rect.x -= DrawInlineCurveButton(rect, state);
-            rect.x -= DrawCustomTrackButton(rect, state);
-            rect.x -= padding;
-            return rect;
-        }
-
-        void DrawHeaderBackground(Rect headerRect)
-        {
-            Color backgroundColor = SelectionManager.Contains(track)
-                ? DirectorStyles.Instance.customSkin.colorSelection
-                : DirectorStyles.Instance.customSkin.colorTrackHeaderBackground;
-
-            var bgRect = headerRect;
-            bgRect.x += m_Styles.trackSwatchStyle.fixedWidth;
-            bgRect.width -= m_Styles.trackSwatchStyle.fixedWidth;
-
-            EditorGUI.DrawRect(bgRect, backgroundColor);
-        }
-
-        void DrawTrackColorKind(Rect rect)
-        {
-            // subtracks don't draw the color, the parent does that.
-            if (track != null && track.isSubTrack)
-                return;
-
-            if (rect.width <= 0) return;
-
-            using (new GUIColorOverride(m_TrackDrawOptions.trackColor))
-            {
-                rect.width = m_Styles.trackSwatchStyle.fixedWidth;
-                GUI.Label(rect, GUIContent.none, m_Styles.trackSwatchStyle);
-            }
-        }
-
-        float DrawTrackIconKind(Rect rect, WindowState state)
-        {
-            // no icons on subtracks
-            if (track != null && track.isSubTrack)
-                return 0.0f;
-
-            rect.yMin += (rect.height - 16f) / 2f;
-            rect.width = 16.0f;
-            rect.height = 16.0f;
-
-            if (!string.IsNullOrEmpty(m_TrackDrawOptions.errorText))
-            {
-                m_ProblemIcon.image = Styles.kProblemIcon;
-                m_ProblemIcon.tooltip = m_TrackDrawOptions.errorText;
-
-                if (CanDrawIcon(m_ProblemIcon))
-                    DrawErrorIcon(rect, state);
-            }
-            else
-            {
-                var content = GUIContent.Temp(m_TrackDrawData.m_TrackIcon, m_DefaultTrackIcon.tooltip);
-                if (CanDrawIcon(content))
-                    GUI.Box(rect, content, GUIStyle.none);
-            }
-
-            return rect.width;
-        }
-
-        void DrawTrackBinding(Rect rect, Rect headerRect)
-        {
-            if (m_TrackDrawData.m_ShowTrackBindings)
-            {
-                DoTrackBindingGUI(rect);
-                return;
-            }
-
-            var textStyle = m_Styles.trackHeaderFont;
-            textStyle.normal.textColor = SelectionManager.Contains(track) ? Color.white : m_Styles.customSkin.colorTrackFont;
-
-            string trackName = track.name;
-
+            // main wrap mode popup
             EditorGUI.BeginChangeCheck();
+            EditorGUI.showMixedValue = !showPerAxisWrapModes && (wrapU.hasMultipleDifferentValues || wrapV.hasMultipleDifferentValues || (isVolumeTexture && wrapW.hasMultipleDifferentValues));
+            value = EditorGUILayout.IntPopup(s_Styles.wrapModeLabel, value, s_Styles.wrapModeContents, s_Styles.wrapModeValues);
+            if (EditorGUI.EndChangeCheck() && value != -1)
+            {
+                // assign the same wrap mode to all axes, and hide per-axis popups
+                wrapU.intValue = value;
+                wrapV.intValue = value;
+                wrapW.intValue = value;
+                showPerAxisWrapModes = false;
+            }
 
-            // by default the size is just the width of the string (for selection purposes)
-            rect.width = m_Styles.trackHeaderFont.CalcSize(new GUIContent(trackName)).x;
+            // show per-axis popups if needed
+            if (value == -1)
+            {
+                showPerAxisWrapModes = true;
+                EditorGUI.indentLevel++;
+                WrapModeAxisPopup(s_Styles.wrapU, wrapU);
+                WrapModeAxisPopup(s_Styles.wrapV, wrapV);
+                if (isVolumeTexture)
+                {
+                    WrapModeAxisPopup(s_Styles.wrapW, wrapW);
+                }
+                EditorGUI.indentLevel--;
+            }
+            EditorGUI.showMixedValue = false;
+        }
 
-            // if we are editing, supply the entire width of the header
-            if (GUIUtility.keyboardControl == track.GetInstanceID())
-                rect.width = (headerRect.xMax - rect.xMin) - (5 * WindowConstants.trackHeaderButtonSize);
-
-            trackName = EditorGUI.DelayedTextField(rect, GUIContent.none, track.GetInstanceID(), track.name, textStyle);
-
+        static void WrapModeAxisPopup(GUIContent label, SerializedProperty wrapProperty)
+        {
+            // In texture importer settings, serialized properties for wrap modes can contain -1, which means "use default".
+            var wrap = (TextureWrapMode)Mathf.Max(wrapProperty.intValue, 0);
+            Rect rect = EditorGUILayout.GetControlRect();
+            EditorGUI.BeginChangeCheck();
+            EditorGUI.BeginProperty(rect, label, wrapProperty);
+            wrap = (TextureWrapMode)EditorGUI.EnumPopup(rect, label, wrap);
+            EditorGUI.EndProperty();
             if (EditorGUI.EndChangeCheck())
             {
-                UndoExtensions.RegisterTrack(track, "Rename Track");
-                track.name = trackName;
+                wrapProperty.intValue = (int)wrap;
             }
         }
 
-        float DrawTrackDropDownMenu(Rect rect)
+        void DoWrapModePopup()
         {
-            if (GUI.Button(rect, GUIContent.none, m_Styles.trackOptions))
+            WrapModePopup(m_WrapU, m_WrapV, m_WrapW, IsVolume(), ref m_ShowPerAxisWrapModes);
+        }
+
+        bool IsVolume()
+        {
+            var t = target as Texture;
+            return t != null && t.dimension == UnityEngine.Rendering.TextureDimension.Tex3D;
+        }
+
+        void DoSpriteInspector()
+        {
+            EditorGUI.BeginChangeCheck();
+            EditorGUILayout.IntPopup(m_SpriteMode, s_Styles.spriteModeOptions, new[] { 1, 2, 3 }, s_Styles.spriteMode);
+
+            // Ensure that PropertyField focus will be cleared when we change spriteMode.
+            if (EditorGUI.EndChangeCheck())
             {
-                // the drop down will apply to all selected tracks
-                if (!SelectionManager.Contains(track))
+                GUIUtility.keyboardControl = 0;
+            }
+
+            EditorGUI.indentLevel++;
+
+            // Show generic attributes
+            if (m_SpriteMode.intValue != 0)
+            {
+                EditorGUILayout.PropertyField(m_SpritePixelsToUnits, s_Styles.spritePixelsPerUnit);
+
+                if (m_SpriteMode.intValue != (int)SpriteImportMode.Polygon && !m_SpriteMode.hasMultipleDifferentValues)
                 {
-                    SelectionManager.Clear();
-                    SelectionManager.Add(track);
+                    EditorGUILayout.IntPopup(m_SpriteMeshType, s_Styles.spriteMeshTypeOptions, new[] { 0, 1 }, s_Styles.spriteMeshType);
                 }
 
-                SequencerContextMenu.ShowTrackContextMenu(null);
-            }
+                EditorGUILayout.IntSlider(m_SpriteExtrude, 0, 32, s_Styles.spriteExtrude);
 
-            return WindowConstants.trackHeaderButtonSize;
-        }
-
-        bool CanDrawInlineCurve()
-        {
-            // Note: A track with animatable parameters always has inline curves.
-            return trackHasAnimatableParameters || TimelineUtility.TrackHasAnimationCurves(track);
-        }
-
-        float DrawInlineCurveButton(Rect rect, WindowState state)
-        {
-            if (!CanDrawInlineCurve())
-            {
-                //Force to close Inline Curve UI if the inline cannot be drawn.
-                if (track.GetShowInlineCurves())
-                    track.SetShowInlineCurves(false);
-                return 0.0f;
-            }
-
-            // Override enable state to display "Show Inline Curves" button in disabled state.
-            bool prevEnabledState = GUI.enabled;
-            GUI.enabled = true;
-            var showInlineCurves = track.GetShowInlineCurves();
-            var tooltip = showInlineCurves ? Styles.trackCurvesBtnOnTooltip : Styles.trackCurvesBtnOffTooltip;
-            var newValue = GUI.Toggle(rect, track.GetShowInlineCurves(), tooltip, DirectorStyles.Instance.trackCurvesButton);
-            GUI.enabled = prevEnabledState;
-
-            if (newValue != track.GetShowInlineCurves())
-            {
-                track.SetShowInlineCurves(newValue);
-                state.GetWindow().treeView.CalculateRowRects();
-            }
-
-            return WindowConstants.trackHeaderButtonSize + WindowConstants.trackHeaderButtonPadding;
-        }
-
-        float DrawRecordButton(Rect rect, WindowState state)
-        {
-            var style = DirectorStyles.Instance.trackRecordButton;
-            const float buttonWidth = WindowConstants.trackHeaderButtonSize + WindowConstants.trackHeaderButtonPadding;
-
-            if (m_TrackDrawData.m_AllowsRecording)
-            {
-                bool isPlayerDisabled = state.editSequence.director != null && !state.editSequence.director.isActiveAndEnabled;
-
-                GameObject goBinding = m_TrackDrawData.m_TrackBinding as GameObject;
-                if (goBinding == null)
+                if (m_SpriteMode.intValue == 1)
                 {
-                    Component c = m_TrackDrawData.m_TrackBinding as Component;
-                    if (c != null)
-                        goBinding = c.gameObject;
-                }
+                    EditorGUILayout.IntPopup(m_Alignment, s_Styles.spriteAlignmentOptions, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, s_Styles.spriteAlignment);
 
-                if (goBinding == null && m_TrackDrawData.m_IsSubTrack)
-                    goBinding = ParentTrack().GetGameObjectBinding(state.editSequence.director);
-
-                var isTrackBindingValid = goBinding != null;
-                var trackErrorDisableButton = !string.IsNullOrEmpty(m_TrackDrawOptions.errorText) && isTrackBindingValid && goBinding.activeInHierarchy;
-                var disableButton = track.lockedInHierarchy || isPlayerDisabled || trackErrorDisableButton || !isTrackBindingValid || state.ignorePreview;
-                using (new EditorGUI.DisabledScope(disableButton))
-                {
-                    if (IsRecording(state))
+                    if (m_Alignment.intValue == (int)SpriteAlignment.Custom)
                     {
-                        state.editorWindow.Repaint();
-                        var remainder = Time.realtimeSinceStartup % 1;
-
-                        if (remainder < 0.22f)
-                            style = GUIStyle.none;
-                        if (GUI.Button(rect, Styles.kActiveRecordButtonTooltip, style) || isPlayerDisabled || !isTrackBindingValid)
-                            state.UnarmForRecord(track);
+                        GUILayout.BeginHorizontal();
+                        EditorGUILayout.PropertyField(m_SpritePivot, new GUIContent());
+                        GUILayout.EndHorizontal();
                     }
-                    else if (!track.timelineAsset.editorSettings.scenePreview)
-                        GUI.Button(rect, Styles.kIgnorePreviewRecordButtonTooltip, style);
+                }
+            }
+
+            EditorGUILayout.PropertyField(m_ImportHiddenLayers, s_Styles.importHiddenLayer);
+            if (m_SpriteMode.intValue == (int)SpriteImportMode.Multiple && !m_SpriteMode.hasMultipleDifferentValues)
+            {
+                EditorGUILayout.PropertyField(m_MosaicLayers, s_Styles.mosaicLayers);
+                using (new EditorGUI.DisabledScope(!m_MosaicLayers.boolValue))
+                {
+                    EditorGUILayout.PropertyField(m_CharacterMode, s_Styles.characterMode);
+                    using (new EditorGUI.DisabledScope(!m_CharacterMode.boolValue))
+                    {
+                        EditorGUILayout.PropertyField(m_GenerateGOHierarchy, s_Styles.generateGOHierarchy);
+                        EditorGUILayout.IntPopup(m_DocumentAlignment, s_Styles.spriteAlignmentOptions, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, s_Styles.characterAlignment);
+                        if (m_DocumentAlignment.intValue == (int)SpriteAlignment.Custom)
+                        {
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Space(EditorGUIUtility.labelWidth);
+                            EditorGUILayout.PropertyField(m_DocumentPivot, new GUIContent());
+                            GUILayout.EndHorizontal();
+                        }
+                        //EditorGUILayout.PropertyField(m_PaperDollMode, s_Styles.paperDollMode);
+                    }
+
+
+                    EditorGUILayout.PropertyField(m_ResliceFromLayer, s_Styles.resliceFromLayer);
+                    if (m_ResliceFromLayer.boolValue)
+                    {
+                        EditorGUILayout.HelpBox(s_Styles.resliceFromLayerWarning.text, MessageType.Info, true);
+                    }
+                }
+                m_ShowExperimental = EditorGUILayout.Foldout(m_ShowExperimental, s_Styles.experimental, true);
+                if (m_ShowExperimental)
+                {
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.PropertyField(m_KeepDupilcateSpriteName, s_Styles.keepDuplicateSpriteName);
+                    EditorGUI.indentLevel--;
+                }
+            }
+
+            using (new EditorGUI.DisabledScope(targets.Length != 1))
+            {
+                GUILayout.BeginHorizontal();
+
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(s_Styles.spriteEditorButtonLabel))
+                {
+                    if (HasModified())
+                    {
+                        // To ensure Sprite Editor Window to have the latest texture import setting,
+                        // We must applied those modified values first.
+                        string dialogText = string.Format(s_Styles.unappliedSettingsDialogContent.text, ((AssetImporter)target).assetPath);
+                        if (EditorUtility.DisplayDialog(s_Styles.unappliedSettingsDialogTitle.text,
+                            dialogText, s_Styles.applyButtonLabel.text, s_Styles.revertButtonLabel.text))
+                        {
+                            ApplyAndImport();
+                            InternalEditorBridge.ShowSpriteEditorWindow(this.assetTarget);
+
+                            // We reimported the asset which destroyed the editor, so we can't keep running the UI here.
+                            GUIUtility.ExitGUI();
+                        }
+                    }
                     else
                     {
-                        if (GUI.Button(rect, Styles.kInactiveRecordButtonTooltip, style))
-                            state.ArmForRecord(track);
+                        InternalEditorBridge.ShowSpriteEditorWindow(this.assetTarget);
                     }
-                    return buttonWidth;
                 }
+                GUILayout.EndHorizontal();
             }
+            EditorGUI.indentLevel--;
+        }
 
-            if (showTrackRecordingDisabled)
+        void DoTextureDefaultInspector()
+        {
+            ColorSpaceGUI();
+            AlphaHandlingGUI();
+        }
+
+        void ColorSpaceGUI()
+        {
+            ToggleFromInt(m_sRGBTexture, s_Styles.sRGBTexture);
+        }
+
+        void POTScaleGUI()
+        {
+            using (new EditorGUI.DisabledScope(m_IsPOT || m_TextureType.intValue == (int)TextureImporterType.Sprite))
             {
-                using (new EditorGUI.DisabledScope(true))
-                    GUI.Button(rect, Styles.kDisabledRecordButtonTooltip, style);
-                return buttonWidth;
+                EnumPopup(m_NPOTScale, typeof(TextureImporterNPOTScale), s_Styles.npot);
             }
-
-            return 0.0f;
         }
 
-        float DrawCustomTrackButton(Rect rect, WindowState state)
+        void ReadableGUI()
         {
-            if (!drawer.HasCustomTrackHeaderButton())
-                return 0.0f;
-
-            drawer.DrawTrackHeaderButton(rect, state);
-            return WindowConstants.trackHeaderButtonSize + WindowConstants.trackHeaderButtonPadding;
+            ToggleFromInt(m_IsReadable, s_Styles.readWrite);
         }
 
-        void DrawLockMarkersButton(Rect rect, WindowState state)
+        void AlphaHandlingGUI()
         {
-            var hasMarkers = track.GetMarkerCount() != 0;
-            var markersShown = showMarkers && hasMarkers;
-            var style = TimelineWindow.styles.trackMarkerButton;
-
+            EditorGUI.showMixedValue = m_AlphaSource.hasMultipleDifferentValues;
             EditorGUI.BeginChangeCheck();
-            var tooltip = markersShown ? Styles.trackMarkerBtnOnTooltip : Styles.trackMarkerBtnOffTooltip;
-            var toggleMarkers = GUI.Toggle(rect, markersShown, tooltip, style);
-            if (EditorGUI.EndChangeCheck() && hasMarkers)
-                track.SetShowTrackMarkers(toggleMarkers);
+            int newAlphaUsage = EditorGUILayout.IntPopup(s_Styles.alphaSource, m_AlphaSource.intValue, s_Styles.alphaSourceOptions, s_Styles.alphaSourceValues);
+
+            EditorGUI.showMixedValue = false;
+            if (EditorGUI.EndChangeCheck())
+            {
+                m_AlphaSource.intValue = newAlphaUsage;
+            }
+
+            bool showAlphaIsTransparency = (TextureImporterAlphaSource)m_AlphaSource.intValue != TextureImporterAlphaSource.None;
+            using (new EditorGUI.DisabledScope(!showAlphaIsTransparency))
+            {
+                ToggleFromInt(m_AlphaIsTransparency, s_Styles.alphaIsTransparency);
+            }
         }
 
-        static void ObjectBindingField(Rect position, Object obj, PlayableBinding binding)
+        void MipMapGUI()
         {
-            var allowScene =
-                typeof(GameObject).IsAssignableFrom(binding.outputTargetType) ||
-                typeof(Component).IsAssignableFrom(binding.outputTargetType);
+            ToggleFromInt(m_EnableMipMap, s_Styles.generateMipMaps);
 
-            var bindingFieldRect = EditorGUI.IndentedRect(position);
-            using (new GUIViewportScope(bindingFieldRect))
+            if (m_EnableMipMap.boolValue && !m_EnableMipMap.hasMultipleDifferentValues)
             {
-                using (var check = new EditorGUI.ChangeCheckScope())
+                EditorGUI.indentLevel++;
+                ToggleFromInt(m_BorderMipMap, s_Styles.borderMipMaps);
+                EditorGUILayout.Popup(s_Styles.mipMapFilter, m_MipMapMode.intValue, s_Styles.mipMapFilterOptions);
+
+                ToggleFromInt(m_MipMapsPreserveCoverage, s_Styles.mipMapsPreserveCoverage);
+                if (m_MipMapsPreserveCoverage.intValue != 0 && !m_MipMapsPreserveCoverage.hasMultipleDifferentValues)
                 {
-                    // FocusType.Passive so it never gets focused when pressing tab
-                    int controlId = GUIUtility.GetControlID("s_ObjectFieldHash".GetHashCode(), FocusType.Passive, position);
-                    var newObject = UnityEditorInternals.DoObjectField(EditorGUI.IndentedRect(position), obj, binding.outputTargetType, controlId, allowScene);
-                    if (check.changed)
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.PropertyField(m_AlphaTestReferenceValue, s_Styles.alphaTestReferenceValue);
+                    EditorGUI.indentLevel--;
+                }
+
+                // Mipmap fadeout
+                ToggleFromInt(m_FadeOut, s_Styles.mipmapFadeOutToggle);
+                if (m_FadeOut.intValue > 0)
+                {
+                    EditorGUI.indentLevel++;
+                    EditorGUI.BeginChangeCheck();
+                    float min = m_MipMapFadeDistanceStart.intValue;
+                    float max = m_MipMapFadeDistanceEnd.intValue;
+                    EditorGUILayout.MinMaxSlider(s_Styles.mipmapFadeOut, ref min, ref max, 0, 10);
+                    if (EditorGUI.EndChangeCheck())
                     {
-                        BindingUtility.Bind(TimelineEditor.inspectedDirector, binding.sourceObject as TrackAsset, newObject);
+                        m_MipMapFadeDistanceStart.intValue = Mathf.RoundToInt(min);
+                        m_MipMapFadeDistanceEnd.intValue = Mathf.RoundToInt(max);
                     }
+                    EditorGUI.indentLevel--;
                 }
+                EditorGUI.indentLevel--;
             }
         }
 
-        void DoTrackBindingGUI(Rect rect)
+        void ToggleFromInt(SerializedProperty property, GUIContent label)
         {
-            var bindingRect = new Rect(
-                rect.xMin,
-                rect.y + (rect.height - WindowConstants.trackHeaderButtonSize) / 2f,
-                Mathf.Min(rect.width, WindowConstants.trackBindingMaxSize) - WindowConstants.trackBindingPadding,
-                WindowConstants.trackHeaderButtonSize);
-
-            if (bindingRect.Contains(Event.current.mousePosition) && TimelineDragging.IsDraggingEvent() && DragAndDrop.objectReferences.Length == 1)
-            {
-                TimelineDragging.HandleBindingDragAndDrop(track, BindingUtility.GetRequiredBindingType(m_TrackDrawData.m_Binding));
-                Event.current.Use();
-            }
-            else
-            {
-                if (m_TrackDrawData.m_Binding.outputTargetType != null && typeof(Object).IsAssignableFrom(m_TrackDrawData.m_Binding.outputTargetType))
-                {
-                    ObjectBindingField(bindingRect, m_TrackDrawData.m_TrackBinding, m_TrackDrawData.m_Binding);
-                }
-            }
+            EditorGUI.BeginChangeCheck();
+            EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
+            int value = EditorGUILayout.Toggle(label, property.intValue > 0) ? 1 : 0;
+            EditorGUI.showMixedValue = false;
+            if (EditorGUI.EndChangeCheck())
+                property.intValue = value;
         }
 
-        bool IsRecording(WindowState state)
+        void EnumPopup(SerializedProperty property, System.Type type, GUIContent label)
         {
-            return state.recording && state.IsArmedForRecord(track);
+            EditorGUILayout.IntPopup(label.text, property.intValue,
+                System.Enum.GetNames(type),
+                System.Enum.GetValues(type) as int[]);
         }
 
-        // background to draw during recording
-        void DrawRecordingTrackBackground(Rect trackRect, TrackAsset trackAsset, Vector2 visibleTime, WindowState state)
+        void ExportMosaicTexture()
         {
-            if (drawer != null)
-                drawer.DrawRecordingBackground(trackRect, trackAsset, visibleTime, state);
-        }
-
-        void UpdateClipOverlaps()
-        {
-            TrackExtensions.ComputeBlendsFromOverlaps(track.clips);
-        }
-
-        internal void RebuildGUICacheIfNecessary()
-        {
-            if (m_TrackHash == track.Hash())
+            var assetPath = ((AssetImporter)target).assetPath;
+            var texture2D = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+            if (texture2D == null)
                 return;
-
-            m_ItemsDrawer = new TrackItemsDrawer(this);
-            m_TrackHash = track.Hash();
+            if (!texture2D.isReadable)
+                texture2D = InternalEditorBridge.CreateTemporaryDuplicate(texture2D, texture2D.width, texture2D.height);
+            var pixelData = texture2D.GetPixels();
+            texture2D = new Texture2D(texture2D.width, texture2D.height);
+            texture2D.SetPixels(pixelData);
+            texture2D.Apply();
+            byte[] bytes = texture2D.EncodeToPNG();
+            var fileName = Path.GetFileNameWithoutExtension(assetPath);
+            var filePath = Path.GetDirectoryName(assetPath);
+            var savePath = Path.Combine(filePath, fileName + ".png");
+            File.WriteAllBytes(savePath, bytes);
+            AssetDatabase.Refresh();
         }
 
-        int BlendHash()
+        protected override void ResetValues()
         {
-            var hash = 0;
-            foreach (var clip in track.clips)
+            base.ResetValues();
+            LoadPlatformSettings();
+            m_TexturePlatformSettingsHelper = new TexturePlatformSettingsHelper(this);
+        }
+
+        public int GetTargetCount()
+        {
+            return targets.Length;
+        }
+
+        public TextureImporterPlatformSettings GetPlatformTextureSettings(int i, string name)
+        {
+            if(m_PlatfromSettings.ContainsKey(name))
+                if(m_PlatfromSettings[name].Count > i)
+                    return m_PlatfromSettings[name][i];
+            return new TextureImporterPlatformSettings()
             {
-                hash = HashUtility.CombineHash(hash,
-                    (clip.duration - clip.start).GetHashCode(),
-                    ((int)clip.blendInCurveMode).GetHashCode(),
-                    ((int)clip.blendOutCurveMode).GetHashCode());
-            }
-            return hash;
+                name = name,
+                overridden = false
+            };
         }
 
-        // callback when the corresponding graph is rebuilt. This can happen, but not have the GUI rebuilt.
-        public override void OnGraphRebuilt()
+        public bool ShowPresetSettings()
         {
-            RefreshCurveEditor();
+            return assetTarget == null;
         }
 
-        void RefreshCurveEditor()
+        public bool DoesSourceTextureHaveAlpha(int v)
         {
-            var window = TimelineWindow.instance;
-            if (track != null && window != null && window.state != null)
+            return true;
+        }
+
+        public bool IsSourceTextureHDR(int v)
+        {
+            return false;
+        }
+
+        public void SetPlatformTextureSettings(int i, TextureImporterPlatformSettings platformSettings)
+        {
+            var psdImporter = ((PSDImporter)targets[i]);
+            psdImporter.SetPlatformTextureSettings(platformSettings);
+            psdImporter.Apply();
+        }
+
+        public void GetImporterSettings(int i, TextureImporterSettings settings)
+        {
+            ((PSDImporter)targets[i]).ReadTextureSettings(settings);
+            // Get settings that have been changed in the inspector
+            GetSerializedPropertySettings(settings);
+        }
+
+        internal TextureImporterSettings GetSerializedPropertySettings(TextureImporterSettings settings)
+        {
+            if (!m_AlphaSource.hasMultipleDifferentValues)
+                settings.alphaSource = (TextureImporterAlphaSource)m_AlphaSource.intValue;
+
+            if (!m_ConvertToNormalMap.hasMultipleDifferentValues)
+                settings.convertToNormalMap = m_ConvertToNormalMap.intValue > 0;
+
+            if (!m_BorderMipMap.hasMultipleDifferentValues)
+                settings.borderMipmap = m_BorderMipMap.intValue > 0;
+
+            if (!m_MipMapsPreserveCoverage.hasMultipleDifferentValues)
+                settings.mipMapsPreserveCoverage = m_MipMapsPreserveCoverage.intValue > 0;
+
+            if (!m_AlphaTestReferenceValue.hasMultipleDifferentValues)
+                settings.alphaTestReferenceValue = m_AlphaTestReferenceValue.floatValue;
+
+            if (!m_NPOTScale.hasMultipleDifferentValues)
+                settings.npotScale = (TextureImporterNPOTScale)m_NPOTScale.intValue;
+
+            if (!m_IsReadable.hasMultipleDifferentValues)
+                settings.readable = m_IsReadable.intValue > 0;
+
+            if (!m_sRGBTexture.hasMultipleDifferentValues)
+                settings.sRGBTexture = m_sRGBTexture.intValue > 0;
+
+            if (!m_EnableMipMap.hasMultipleDifferentValues)
+                settings.mipmapEnabled = m_EnableMipMap.intValue > 0;
+
+            if (!m_MipMapMode.hasMultipleDifferentValues)
+                settings.mipmapFilter = (TextureImporterMipFilter)m_MipMapMode.intValue;
+
+            if (!m_FadeOut.hasMultipleDifferentValues)
+                settings.fadeOut = m_FadeOut.intValue > 0;
+
+            if (!m_MipMapFadeDistanceStart.hasMultipleDifferentValues)
+                settings.mipmapFadeDistanceStart = m_MipMapFadeDistanceStart.intValue;
+
+            if (!m_MipMapFadeDistanceEnd.hasMultipleDifferentValues)
+                settings.mipmapFadeDistanceEnd = m_MipMapFadeDistanceEnd.intValue;
+
+            if (!m_SpriteMode.hasMultipleDifferentValues)
+                settings.spriteMode = m_SpriteMode.intValue;
+
+            if (!m_SpritePixelsToUnits.hasMultipleDifferentValues)
+                settings.spritePixelsPerUnit = m_SpritePixelsToUnits.floatValue;
+
+            if (!m_SpriteExtrude.hasMultipleDifferentValues)
+                settings.spriteExtrude = (uint)m_SpriteExtrude.intValue;
+
+            if (!m_SpriteMeshType.hasMultipleDifferentValues)
+                settings.spriteMeshType = (SpriteMeshType)m_SpriteMeshType.intValue;
+
+            if (!m_Alignment.hasMultipleDifferentValues)
+                settings.spriteAlignment = m_Alignment.intValue;
+
+            if (!m_SpritePivot.hasMultipleDifferentValues)
+                settings.spritePivot = m_SpritePivot.vector2Value;
+
+            if (!m_WrapU.hasMultipleDifferentValues)
+                settings.wrapModeU = (TextureWrapMode)m_WrapU.intValue;
+            if (!m_WrapV.hasMultipleDifferentValues)
+                settings.wrapModeU = (TextureWrapMode)m_WrapV.intValue;
+            if (!m_WrapW.hasMultipleDifferentValues)
+                settings.wrapModeU = (TextureWrapMode)m_WrapW.intValue;
+
+            if (!m_FilterMode.hasMultipleDifferentValues)
+                settings.filterMode = (FilterMode)m_FilterMode.intValue;
+
+            if (!m_Aniso.hasMultipleDifferentValues)
+                settings.aniso = m_Aniso.intValue;
+
+
+            if (!m_AlphaIsTransparency.hasMultipleDifferentValues)
+                settings.alphaIsTransparency = m_AlphaIsTransparency.intValue > 0;
+
+            if (!m_TextureType.hasMultipleDifferentValues)
+                settings.textureType = (TextureImporterType)m_TextureType.intValue;
+
+            if (!m_TextureShape.hasMultipleDifferentValues)
+                settings.textureShape = (TextureImporterShape)m_TextureShape.intValue;
+
+            return settings;
+        }
+        /// <summary>
+        /// Override of AssetImporterEditor.showImportedObject
+        /// The property always returns false so that imported objects does not show up in the Inspector.
+        /// </summary>
+        /// <returns>false</returns>
+        public override bool showImportedObject
+        {
+            get { return false; }
+        }
+        
+        public bool textureTypeHasMultipleDifferentValues
+        {
+           get { return m_TextureType.hasMultipleDifferentValues; }
+        }
+
+        public TextureImporterType textureType
+        {
+           get { return (TextureImporterType)m_TextureType.intValue; }
+        }
+
+        public SpriteImportMode spriteImportMode
+        {
+            get { return (SpriteImportMode)m_SpriteMode.intValue; }
+        }
+
+        public override bool HasModified()
+        {
+            if (base.HasModified())
+                return true;
+
+            return m_TexturePlatformSettingsHelper.HasModified();
+        }
+
+        internal class Styles
+        {
+            public readonly GUIContent textureTypeTitle = new GUIContent("Texture Type", "What will this texture be used for?");
+            public readonly GUIContent[] textureTypeOptions =
             {
-                bool hasEditor = clipCurveEditor != null;
-                bool shouldHaveEditor = ShouldShowInfiniteClipEditor();
-                if (hasEditor != shouldHaveEditor)
-                    window.state.AddEndFrameDelegate((x, currentEvent) =>
-                    {
-                        x.Refresh();
-                        return true;
-                    });
-            }
-        }
+                new GUIContent("Default", "Texture is a normal image such as a diffuse texture or other."),
+                new GUIContent("Sprite (2D and UI)", "Texture is used for a sprite."),
+            };
+            public readonly int[] textureTypeValues =
+            {
+                (int)TextureImporterType.Default,
+                (int)TextureImporterType.Sprite,
+            };
 
-        bool ShouldShowInfiniteClipEditor()
-        {
-            var animationTrack = track as AnimationTrack;
-            if (animationTrack != null)
-                return animationTrack.ShouldShowInfiniteClipEditor();
+            public readonly GUIContent textureShape = new GUIContent("Texture Shape", "What shape is this texture?");
+            private readonly GUIContent textureShape2D = new GUIContent("2D, Texture is 2D.");
+            private readonly  GUIContent textureShapeCube = new GUIContent("Cube", "Texture is a Cubemap.");
+            public readonly Dictionary<TextureImporterShape, GUIContent[]> textureShapeOptionsDictionnary = new Dictionary<TextureImporterShape, GUIContent[]>();
+            public readonly Dictionary<TextureImporterShape, int[]> textureShapeValuesDictionnary = new Dictionary<TextureImporterShape, int[]>();
 
-            return trackHasAnimatableParameters;
-        }
 
-        public void SelectCurves()
-        {
-            SelectionManager.RemoveTimelineSelection();
-            SelectionManager.SelectInlineCurveEditor(this);
-        }
+            public readonly GUIContent filterMode = new GUIContent("Filter Mode");
+            public readonly GUIContent[] filterModeOptions =
+            {
+                new GUIContent("Point (no filter)"),
+                new GUIContent("Bilinear"),
+                new GUIContent("Trilinear")
+            };
 
-        public void ValidateCurvesSelection() {}
-    }
-}
+            public readonly GUIContent textureFormat = new GUIContent("Format");
+
+            public readonly GUIContent defaultPlatform = new GUIContent("Default");
+            public readonly GUIContent mipmapFadeOutToggle = new GUIContent("Fadeout Mip Maps");
+            public readonly GUIContent mipmapFadeOut = new GUIContent("Fade Range");
+            public readonly GUIContent readWrite = new GUIContent("Read/Write Enabled", "Enable to be able to access the raw pixel data from code.");
+
+            public readonly GUIContent alphaSource = new GUIContent("Alpha Source", "How is the alpha generated for the imported texture.");
+            public readonly GUIContent[] alphaSourceOptions =
+            {
+                new GUIContent("None", "No Alpha will be used."),
+                new GUIContent("Input Texture Alpha", "Use Alpha from the input texture if one is provided."),
+                new GUIContent("From Gray Scale", "Generate Alpha from image gray scale."),
+            };
+            public readonly int[] alphaSourceValues =
+            {
+                (int)TextureImporterAlphaSource.None,
+                (int)TextureImporterAlphaSource.FromInput,
+                (int)TextureImporterAlphaSource.FromGrayScale,
+            };
+
+            public readonly GUIContent generateMipMaps = new GUIContent("Generate Mip Maps");
+            public readonly GUIContent sRGBTexture = new GUIContent("sRGB (Color Texture)", "Texture content is stored in gamma space. Non-HDR color textures should enable this flag (except if used for IMGUI).");
+            public readonly GUIContent borderMipMaps = new GUIContent("Border Mip Maps");
+            public readonly GUIContent mipMapsPreserveCoverage = new GUIContent("Mip Maps Preserve Coverage", "The alpha channel of generated Mip Maps will preserve coverage during the alpha test.");
+            public readonly GUIContent alphaTestReferenceValue = new GUIContent("Alpha Cutoff Value", "The reference value used during the alpha test. Controls Mip Map coverage.");
+            public readonly GUIContent mipMapFilter = new GUIContent("Mip Map Filtering");
+            public readonly GUIContent[] mipMapFilterOptions =
+            {
+                new GUIContent("Box"),
+                new GUIContent("Kaiser"),
+            };
+            public readonly GUIContent npot = new GUIContent("Non Power of 2", "How non-power-of-two textures are scaled on import.");
+
+            public readonly GUIContent compressionQuality = new GUIContent("Compressor Quality");
+            public readonly GUIContent compressionQualitySlider = new GUIContent("Compressor Quality", "Use the slider to adjust compression quality from 0 (Fastest) to 100 (Best)");
+            public readonly GUIContent[] mobileCompressionQualityOptions =
+            {
+                new GUIContent("Fast"),
+                new GUIContent("Normal"),
+                new GUIContent("Best")
+            };
+
+            public readonly GUIContent spriteMode = new GUIContent("Sprite Mode");
+            public readonly GUIContent[] spriteModeOptions =
+            {
+                new GUIContent("Single"),
+                new GUIContent("Multiple"),
+                new GUIContent("Polygon"),
+            };
+            public readonly GUIContent[] spriteMeshTypeOptions =
+            {
+                new GUIContent("Full Rect"),
+                new GUIContent("Tight"),
+            };
+
+            public readonly GUIContent spritePackingTag = new GUIContent("Packing Tag", "Tag for the Sprite Packing system.");
+            public readonly GUIContent spritePixelsPerUnit = new GUIContent("Pixels Per Unit", "How many pixels in the sprite correspond to one unit in the world.");
+            public readonly GUIContent spriteExtrude = new GUIContent("Extrude Edges", "How much empty area to leave around the sprite in the generated mesh.");
+            public readonly GUIContent spriteMeshType = new GUIContent("Mesh Type", "Type of sprite mesh to generate.");
+            public readonly GUIContent spriteAlignment = new GUIContent("Pivot", "Sprite pivot point in its local space. May be used for syncing animation frames of different sizes.");
+            public readonly GUIContent characterAlignment = new GUIContent("Pivot", "Character pivot point in its local space using normalized value i.e. 0 - 1");
+
+            public readonly GUIContent[] spriteAlignmentOptions =
+            {
+                new GUIContent("Center"),
+                new GUIContent("Top Left"),
+                new GUIContent("Top"),
+                new GUIContent("Top Right"),
+                new GUIContent("Left"),
+                new GUIContent("Right"),
+                new GUIContent("Bottom Left"),
+                new GUIContent("Bottom"),
+                new GUIContent("Bottom Right"),
+                new GUIContent("Custom"),
+            };
+
+            public readonly GUIContent warpNotSupportWarning = new GUIContent("Graphics device doesn't support Repeat wrap mode on NPOT textures. Falling back to Clamp.");
+            public readonly GUIContent anisoLevelLabel = new GUIContent("Aniso Level");
+            public readonly GUIContent anisotropicDisableInfo = new GUIContent("Anisotropic filtering is disabled for all textures in Quality Settings.");
+            public readonly GUIContent anisotropicForceEnableInfo = new GUIContent("Anisotropic filtering is enabled for all textures in Quality Settings.");
+            public readonly GUIContent unappliedSettingsDialogTitle = new GUIContent("Unapplied import settings");
+            public readonly GUIContent unappliedSettingsDialogContent = new GUIContent("Unapplied import settings for \'{0}\'.\nApply and continue to sprite editor or cancel.");
+            public readonly GUIContent applyButtonLabel = new GUIContent("Apply");
+            public readonly GUIContent revertButtonLabel = new GUIContent("Revert");
+            public readonly GUIContent spriteEditorButtonLabel = new GUIContent("Sprite Editor");
+            public readonly GUIContent resliceFromLayerWarning = new GUIContent("This will reinitialize and recreate all Sprites based on the file’s layer data. Existing Sprite metadata from previously generated Sprites are copied over.");
+            public readonly GUIContent alphaIsTransparency = new GUIContent("Alpha Is Transparency", "If the provided alpha channel is transparency, enable this to pre-filter the color to avoid texture filtering artifacts. This is not supported for HDR textures.");
+            public readonly GUIContent etc1Compression = new GUIContent("Compress using ETC1 (split alpha channel)|Alpha for this texture will be preserved by splitting the alpha channel to another texture, and both resulting textures will be compressed using ETC1.");
+            public readonly GUIContent crunchedCompression = new GUIContent("Use Crunch Compression", "Texture is crunch-compressed to save space on disk when applicable.");
+
+            public readonly GUIContent showAdvanced = new GUIContent("Advanced", "Show advanced settings.");
+
+            public readonly GUIContent platformSettingsLabel  = new GUIContent("Platform Setttings");
+
+            public readonly GUIContent[] platformSettingsSelection;
+
+            public readonly GUIContent wrapModeLabel = new GUIContent("Wrap Mode");
+            public readonly GUIContent wrapU = new GUIContent("U axis");
+            public readonly GUIContent wrapV = new GUIContent("V axis");
+            public readonly GUIContent wrapW = new GUIContent("W axis");
+
+
+            public readonly GUIContent[] wrapModeContents =
+            {
+                new GUIContent("Repeat"),
+                new GUIContent("Clamp"),
+                new GUIContent("Mirror"),
+                new GUIContent("Mirror Once"),
+                new GUIContent("Per-axis")
+            };
+            public readonly int[] wrapModeValues =
+            {
+                (int)TextureWrapMode.Repeat,
+                (int)TextureWrapMode.Clamp,
+                (int)TextureWrapMode.Mirror,
+                (int)TextureWrapMode.MirrorOnce,
+                -1
+            };
+
+            public readonly GUIContent importHiddenLayer = new GUIContent(L10n.Tr("Import Hidden"), L10n.Tr("Import hidden layers"));
+            public readonly GUIContent mosaicLayers = new GUIContent(L10n.Tr("Mosaic"), L10n.Tr("Layers will be imported as individual Sprites"));
+            public readonly GUIContent characterMode = new GUIContent(L10n.Tr("Character Rig"), L10n.Tr("Enable to support 2D Animation character rigging"));
+            public readonly GUIContent generateGOHierarchy = new GUIContent(L10n.Tr("Use Layer Grouping"), L10n.Tr("GameObjects are grouped according to source file layer grouping"));
+            public readonly GUIContent resliceFromLayer = new GUIContent(L10n.Tr("Reslice"), L10n.Tr("Recreate Sprite rects from file"));
+            public readonly GUIContent paperDollMode = new GUIContent(L10n.Tr("Paper Doll Mode"), L10n.Tr("Special mode to generate a Prefab for Paper Doll use case"));
+            public readonly GUIContent experimental =  new GUIContent(L10n.Tr("Experimental"));
+            public readonly GUIContent keepDuplicateSpriteName = new GUIContent(L10n.Tr("Keep Duplicate Name"), L10n.Tr("Keep Sprite name same as Layer Name even if there are duplicated Layer Name"));
+
+            public Styles()
+ 

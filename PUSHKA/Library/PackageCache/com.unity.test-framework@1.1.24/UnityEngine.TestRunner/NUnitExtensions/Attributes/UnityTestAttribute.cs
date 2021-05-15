@@ -1,98 +1,100 @@
-using System;
-using System.Collections;
-using NUnit.Framework;
-using NUnit.Framework.Internal.Commands;
-using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
-using NUnit.Framework.Internal.Builders;
-using UnityEngine.TestRunner.NUnitExtensions.Runner;
-
-namespace UnityEngine.TestTools
-{
-    /// <summary>
-    /// `UnityTest` attribute is the main addition to the standard [NUnit](http://www.nunit.org/) library for the Unity Test Framework. This type of unit test allows you to skip a frame from within a test (so background tasks can finish) or give certain commands to the Unity **Editor**, such as performing a domain reload or entering **Play Mode** from an **Edit Mode** test.
-    /// In Play Mode, the `UnityTest` attribute runs as a [coroutine](https://docs.unity3d.com/Manual/Coroutines.html). Whereas Edit Mode tests run in the [EditorApplication.update](https://docs.unity3d.com/ScriptReference/EditorApplication-update.html) callback loop.
-    /// The `UnityTest` attribute is, in fact, an alternative to the `NUnit` [Test attribute](https://github.com/nunit/docs/wiki/Test-Attribute), which allows yielding instructions back to the framework. Once the instruction is complete, the test run continues. If you `yield return null`, you skip a frame. That might be necessary to ensure that some changes do happen on the next iteration of either the `EditorApplication.update` loop or the [game loop](https://docs.unity3d.com/Manual/ExecutionOrder.html).
-    /// <example>
-    /// ## Edit Mode example
-    /// The most simple example of an Edit Mode test could be the one that yields `null` to skip the current frame and then continues to run:
-    /// <code>
-    /// [UnityTest]
-    /// public IEnumerator EditorUtility_WhenExecuted_ReturnsSuccess()
-    /// {
-    ///     var utility = RunEditorUtilityInTheBackground();
-    /// 
-    ///     while (utility.isRunning)
-    ///     {
-    ///         yield return null;
-    ///     }
-    /// 
-    ///     Assert.IsTrue(utility.isSuccess);
-    /// }    
-    /// </code>
-    /// </example>
-    /// <example>
-    /// ## Play Mode example
-    /// 
-    /// In Play Mode, a test runs as a coroutine attached to a [MonoBehaviour](https://docs.unity3d.com/ScriptReference/MonoBehaviour.html). So all the yield instructions available in coroutines, are also available in your test. 
-    /// 
-    /// From a Play Mode test you can use one of Unity’s [Yield Instructions](https://docs.unity3d.com/ScriptReference/YieldInstruction.html):
-    /// 
-    /// - [WaitForFixedUpdate](https://docs.unity3d.com/ScriptReference/WaitForFixedUpdate.html): to ensure changes expected within the next cycle of physics calculations.
-    /// - [WaitForSeconds](https://docs.unity3d.com/ScriptReference/WaitForSeconds.html): if you want to pause your test coroutine for a fixed amount of time. Be careful about creating long-running tests.
-    /// 
-    /// The simplest example is to yield to `WaitForFixedUpdate`:
-    /// <code>
-    /// [UnityTest]
-    /// public IEnumerator GameObject_WithRigidBody_WillBeAffectedByPhysics()
-    /// {
-    ///     var go = new GameObject();
-    ///     go.AddComponent&lt;Rigidbody&gt;();
-    ///     var originalPosition = go.transform.position.y;
-    /// 
-    ///     yield return new WaitForFixedUpdate();
-    /// 
-    ///     Assert.AreNotEqual(originalPosition, go.transform.position.y);
-    /// }
-    /// </code>
-    /// </example>
-    /// </summary>
-    [AttributeUsage(AttributeTargets.Method)]
-    public class UnityTestAttribute : CombiningStrategyAttribute, ISimpleTestBuilder, IImplyFixture
-    {
-        /// <summary>
-        /// Initializes and returns an instance of UnityTestAttribute.
+/ <summary>
+        /// Callback to do the collision resolution and shot evaluation
         /// </summary>
-        public UnityTestAttribute() : base(new UnityCombinatorialStrategy(), new ParameterDataSourceProvider()) {}
-
-        private readonly NUnitTestCaseBuilder _builder = new NUnitTestCaseBuilder();
-
-        /// <summary>
-        /// This method builds the TestMethod from the Test and the method info. It also checks if the test with the `UnityTestAttribute` has an IEnumerator as return type.
-        /// </summary>
-        /// <param name="method">The method info.</param>
-        /// <param name="suite">The test.</param>
-        /// <returns>A TestMethod object</returns>
-        TestMethod ISimpleTestBuilder.BuildFrom(IMethodInfo method, Test suite)
+        /// <param name="vcam">The virtual camera being processed</param>
+        /// <param name="stage">The current pipeline stage</param>
+        /// <param name="state">The current virtual camera state</param>
+        /// <param name="deltaTime">The current applicable deltaTime</param>
+        protected override void PostPipelineStageCallback(
+            CinemachineVirtualCameraBase vcam,
+            CinemachineCore.Stage stage, ref CameraState state, float deltaTime)
         {
-            TestCaseParameters parms = new TestCaseParameters
+            VcamExtraState extra = null;
+            if (stage == CinemachineCore.Stage.Body)
             {
-                ExpectedResult = new object(),
-                HasExpectedResult = true
-            };
-
-            var t = _builder.BuildTestMethod(method, suite, parms);
-
-            if (t.parms != null)
-                t.parms.HasExpectedResult = false;
-
-            if (!method.ReturnType.IsType(typeof(IEnumerator)))
-            {
-                t.RunState = RunState.NotRunnable;
-                t.Properties.Set(PropertyNames.SkipReason, "Method marked with UnityTest must return IEnumerator.");
+                extra = GetExtraState<VcamExtraState>(vcam);
+                extra.targetObscured = false;
+                extra.colliderDisplacement = 0;
+                if (extra.debugResolutionPath != null)
+                    extra.debugResolutionPath.RemoveRange(0, extra.debugResolutionPath.Count);
             }
- 
-            return t;
-        }
-    }
-}
+
+            // Move the body before the Aim is calculated
+            if (stage == CinemachineCore.Stage.Body)
+            {
+                if (m_AvoidObstacles)
+                {
+                    Vector3 displacement = Vector3.zero;
+                    displacement = PreserveLignOfSight(ref state, ref extra);
+                    if (m_MinimumOcclusionTime > Epsilon)
+                    {
+                        float now = CinemachineCore.CurrentTime;
+                        if (displacement.sqrMagnitude < Epsilon)
+                            extra.occlusionStartTime = 0;
+                        else
+                        {
+                            if (extra.occlusionStartTime <= 0)
+                                extra.occlusionStartTime = now;
+                            if (now - extra.occlusionStartTime < m_MinimumOcclusionTime)
+                                displacement = extra.m_previousDisplacement;
+                        }
+                    }
+
+                    // Apply distance smoothing
+                    if (m_SmoothingTime > Epsilon)
+                    {
+                        Vector3 pos = state.CorrectedPosition + displacement;
+                        Vector3 dir = pos - state.ReferenceLookAt;
+                        float distance = dir.magnitude;
+                        if (distance > Epsilon)
+                        {
+                            dir /= distance;
+                            if (!displacement.AlmostZero())
+                                extra.UpdateDistanceSmoothing(distance, m_SmoothingTime);
+                            distance = extra.ApplyDistanceSmoothing(distance, m_SmoothingTime);
+                            displacement += (state.ReferenceLookAt + dir * distance) - pos;
+                        }
+                    }
+
+                    float damping = m_Damping;
+                    if (displacement.AlmostZero())
+                        extra.ResetDistanceSmoothing(m_SmoothingTime);
+                    else
+                        damping = m_DampingWhenOccluded;
+                    if (damping > 0 && deltaTime >= 0 && VirtualCamera.PreviousStateIsValid)
+                    {
+                        Vector3 delta = displacement - extra.m_previousDisplacement;
+                        delta = Damper.Damp(delta, damping, deltaTime);
+                        displacement = extra.m_previousDisplacement + delta;
+                    }
+                    extra.m_previousDisplacement = displacement;
+                    Vector3 correction = RespectCameraRadius(state.CorrectedPosition + displacement, ref state);
+                    if (damping > 0 && deltaTime >= 0 && VirtualCamera.PreviousStateIsValid)
+                    {
+                        Vector3 delta = correction - extra.m_previousDisplacementCorrection;
+                        delta = Damper.Damp(delta, damping, deltaTime);
+                        correction = extra.m_previousDisplacementCorrection + delta;
+                    }
+                    displacement += correction;
+                    extra.m_previousDisplacementCorrection = correction;
+                    state.PositionCorrection += displacement;
+                    extra.colliderDisplacement += displacement.magnitude;
+                }
+            }
+            // Rate the shot after the aim was set
+            if (stage == CinemachineCore.Stage.Aim)
+            {
+                extra = GetExtraState<VcamExtraState>(vcam);
+                extra.targetObscured = IsTargetOffscreen(state) || CheckForTargetObstructions(state);
+
+                // GML these values are an initial arbitrary attempt at rating quality
+                if (extra.targetObscured)
+                    state.ShotQuality *= 0.2f;
+                if (extra.colliderDisplacement > 0)
+                    state.ShotQuality *= 0.8f;
+
+                float nearnessBoost = 0;
+                const float kMaxNearBoost = 0.2f;
+                if (m_OptimalTargetDistance > 0 && state.HasLookAt)
+                {
+                    float distance = Vector3.Magnitude(state.R

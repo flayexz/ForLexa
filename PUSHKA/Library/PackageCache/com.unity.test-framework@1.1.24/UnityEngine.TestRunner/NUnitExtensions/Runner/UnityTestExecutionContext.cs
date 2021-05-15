@@ -1,130 +1,123 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using NUnit.Framework;
-using NUnit.Framework.Constraints;
-using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
-using NUnit.Framework.Internal.Execution;
-using UnityEngine.TestTools;
+ojectGenerationFlag.Embedded, "Embedded packages", "");
+            SettingsButton(ProjectGenerationFlag.Local, "Local packages", "");
+            SettingsButton(ProjectGenerationFlag.Registry, "Registry packages", "");
+            SettingsButton(ProjectGenerationFlag.Git, "Git packages", "");
+            SettingsButton(ProjectGenerationFlag.BuiltIn, "Built-in packages", "");
+#if UNITY_2019_3_OR_NEWER
+            SettingsButton(ProjectGenerationFlag.LocalTarBall, "Local tarball", "");
+#endif
+            SettingsButton(ProjectGenerationFlag.Unknown, "Packages from unknown sources", "");
+            RegenerateProjectFiles();
+            EditorGUI.indentLevel--;
 
-namespace UnityEngine.TestRunner.NUnitExtensions.Runner
-{
-    internal class UnityTestExecutionContext : ITestExecutionContext
-    {
-        private readonly UnityTestExecutionContext _priorContext;
-        private TestResult _currentResult;
-        private int _assertCount;
+            HandledExtensionsString = EditorGUILayout.TextField(new GUIContent("Extensions handled: "), HandledExtensionsString);
+        }
 
-        public static UnityTestExecutionContext CurrentContext { get; set; }
-
-        public UnityTestExecutionContext Context { get; private set; }
-
-        public Test CurrentTest { get; set; }
-        public DateTime StartTime { get; set; }
-        public long StartTicks { get; set; }
-        public TestResult CurrentResult
+        void RegenerateProjectFiles()
         {
-            get { return _currentResult; }
-            set
+            var rect = EditorGUI.IndentedRect(EditorGUILayout.GetControlRect(new GUILayoutOption[] { }));
+            rect.width = 252;
+            if (GUI.Button(rect, "Regenerate project files"))
             {
-                _currentResult = value;
-                if (value != null)
-                    OutWriter = value.OutWriter;
+                m_ProjectGeneration.Sync();
             }
         }
 
-        public object TestObject { get; set; }
-        public string WorkDirectory { get; set; }
-
-
-        private TestExecutionStatus _executionStatus;
-        public TestExecutionStatus ExecutionStatus
+        void SettingsButton(ProjectGenerationFlag preference, string guiMessage, string toolTip)
         {
-            get
+            var prevValue = m_ProjectGeneration.AssemblyNameProvider.ProjectGenerationFlag.HasFlag(preference);
+            var newValue = EditorGUILayout.Toggle(new GUIContent(guiMessage, toolTip), prevValue);
+            if (newValue != prevValue)
             {
-                // ExecutionStatus may have been set to StopRequested or AbortRequested
-                // in a prior context. If so, reflect the same setting in this context.
-                if (_executionStatus == TestExecutionStatus.Running && _priorContext != null)
-                    _executionStatus = _priorContext.ExecutionStatus;
-
-                return _executionStatus;
-            }
-            set
-            {
-                _executionStatus = value;
-
-                // Push the same setting up to all prior contexts
-                if (_priorContext != null)
-                    _priorContext.ExecutionStatus = value;
+                m_ProjectGeneration.AssemblyNameProvider.ToggleProjectGeneration(preference);
             }
         }
 
-        public List<ITestAction> UpstreamActions { get; private set; }
-        public int TestCaseTimeout { get; set; }
-        public CultureInfo CurrentCulture { get; set; }
-        public CultureInfo CurrentUICulture { get; set; }
-        public ITestListener Listener { get; set; }
-
-        public UnityTestExecutionContext()
+        public void CreateIfDoesntExist()
         {
-            UpstreamActions = new List<ITestAction>();
-            CurrentContext = this;
-        }
-
-        public UnityTestExecutionContext(UnityTestExecutionContext other)
-        {
-            _priorContext = other;
-
-            CurrentTest = other.CurrentTest;
-            CurrentResult = other.CurrentResult;
-            TestObject = other.TestObject;
-            WorkDirectory = other.WorkDirectory;
-            Listener = other.Listener;
-            TestCaseTimeout = other.TestCaseTimeout;
-            UpstreamActions = new List<ITestAction>(other.UpstreamActions);
-            SetUpTearDownState = other.SetUpTearDownState;
-            OuterUnityTestActionState = other.OuterUnityTestActionState;
-            EnumerableTestState = other.EnumerableTestState;
-
-            TestContext.CurrentTestExecutionContext = this;
-
-            CurrentCulture = other.CurrentCulture;
-            CurrentUICulture = other.CurrentUICulture;
-            CurrentContext = this;
-        }
-
-        public TextWriter OutWriter { get; private set; }
-        public bool StopOnError { get; set; }
-
-        public IWorkItemDispatcher Dispatcher { get; set; }
-
-        public ParallelScope ParallelScope { get; set; }
-        public string WorkerId { get; private set; }
-        public Randomizer RandomGenerator { get; private set; }
-        public ValueFormatter CurrentValueFormatter { get; private set; }
-        public bool IsSingleThreaded { get; set; }
-        public BeforeAfterTestCommandState SetUpTearDownState { get; set; }
-        public BeforeAfterTestCommandState OuterUnityTestActionState { get; set; }
-        public EnumerableTestState EnumerableTestState { get; set; }
-
-        internal int AssertCount
-        {
-            get
+            if (!m_ProjectGeneration.SolutionExists())
             {
-                return _assertCount;
+                m_ProjectGeneration.Sync();
             }
         }
 
-        public void IncrementAssertCount()
+        public void SyncIfNeeded(string[] addedFiles, string[] deletedFiles, string[] movedFiles, string[] movedFromFiles, string[] importedFiles)
         {
-            _assertCount += 1;
+            m_ProjectGeneration.SyncIfNeeded(addedFiles.Union(deletedFiles).Union(movedFiles).Union(movedFromFiles).ToList(), importedFiles);
         }
 
-        public void AddFormatter(ValueFormatterFactory formatterFactory)
+        public void SyncAll()
         {
-            throw new NotImplementedException();
+            AssetDatabase.Refresh();
+            m_ProjectGeneration.Sync();
         }
-    }
-}
+
+        public bool OpenProject(string path, int line, int column)
+        {
+            if (path != "" && (!SupportsExtension(path) || !File.Exists(path))) // Assets - Open C# Project passes empty path here
+            {
+                return false;
+            }
+
+            if (line == -1)
+                line = 1;
+            if (column == -1)
+                column = 0;
+
+            string arguments;
+            if (Arguments != DefaultArgument)
+            {
+                arguments = m_ProjectGeneration.ProjectDirectory != path
+                    ? CodeEditor.ParseArgument(Arguments, path, line, column)
+                    : m_ProjectGeneration.ProjectDirectory;
+            }
+            else
+            {
+                arguments = $@"""{m_ProjectGeneration.ProjectDirectory}""";
+                if (m_ProjectGeneration.ProjectDirectory != path && path.Length != 0)
+                {
+                    arguments += $@" -g ""{path}"":{line}:{column}";
+                }
+            }
+
+            if (IsOSX)
+            {
+                return OpenOSX(arguments);
+            }
+
+            var app = DefaultApp;
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = app,
+                    Arguments = arguments,
+                    WindowStyle = app.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal,
+                    CreateNoWindow = true,
+                    UseShellExecute = true,
+                }
+            };
+
+            process.Start();
+            return true;
+        }
+
+        static bool OpenOSX(string arguments)
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "open",
+                    Arguments = $"-n \"{DefaultApp}\" --args {arguments}",
+                    UseShellExecute = true,
+                }
+            };
+
+            process.Start();
+            return true;
+        }
+
+        static bool SupportsExtension(string path)
+        {
+            var ex

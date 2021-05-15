@@ -1,359 +1,284 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using NUnit.Framework;
-using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
-using NUnit.Framework.Internal.Commands;
-using NUnit.Framework.Internal.Execution;
-using UnityEngine.TestTools.Logging;
-using UnityEngine.TestTools.TestRunner;
+using JetBrains.Annotations;
+using Unity.Cloud.Collaborate.Assets;
+using Unity.Cloud.Collaborate.Components;
+using Unity.Cloud.Collaborate.Models;
+using Unity.Cloud.Collaborate.Models.Structures;
+using Unity.Cloud.Collaborate.Views;
+using UnityEngine;
+using UnityEngine.Assertions;
 
-namespace UnityEngine.TestRunner.NUnitExtensions.Runner
+namespace Unity.Cloud.Collaborate.Presenters
 {
-    internal class CompositeWorkItem : UnityWorkItem
+    internal class MainPresenter : IMainPresenter
     {
-        private readonly TestSuite _suite;
-        private readonly TestSuiteResult _suiteResult;
-        private readonly ITestFilter _childFilter;
-        private TestCommand _setupCommand;
-        private TestCommand _teardownCommand;
+        [NotNull]
+        readonly IMainView m_View;
+        [NotNull]
+        readonly IMainModel m_Model;
 
-        public List<UnityWorkItem> Children { get; private set; }
+        bool m_IsStarted;
 
-        private int _countOrder;
+        const string k_ErrorOccuredId = "error_occured";
+        const string k_ConflictsDetectedId = "conflicts_detected";
+        const string k_RevisionsAvailableId = "revisions_available";
 
-        private CountdownEvent _childTestCountdown;
-
-        public CompositeWorkItem(TestSuite suite, ITestFilter childFilter, WorkItemFactory factory)
-            : base(suite, factory)
+        public MainPresenter([NotNull] IMainView view, [NotNull] IMainModel model)
         {
-            _suite = suite;
-            _suiteResult = Result as TestSuiteResult;
-            _childFilter = childFilter;
-            _countOrder = 0;
+            m_View = view;
+            m_Model = model;
         }
 
-        protected override IEnumerable PerformWork()
+        /// <inheritdoc />
+        public void Start()
         {
-            InitializeSetUpAndTearDownCommands();
+            Assert.IsFalse(m_IsStarted, "The presenter has already been started.");
+            m_IsStarted = true;
 
-            if (UnityTestExecutionContext.CurrentContext != null && m_DontRunRestoringResult && EditModeTestCallbacks.RestoringTestContext != null)
+            // Setup listeners.
+            m_Model.ConflictStatusChange += OnConflictStatusChange;
+            m_Model.OperationStatusChange += OnOperationStatusChange;
+            m_Model.OperationProgressChange += OnOperationProgressChange;
+            m_Model.ErrorOccurred += OnErrorOccurred;
+            m_Model.ErrorCleared += OnErrorCleared;
+            m_Model.RemoteRevisionsAvailabilityChange += OnRemoteRevisionsAvailabilityChange;
+            m_Model.BackButtonStateUpdated += OnBackButtonStateUpdated;
+            m_Model.StateChanged += OnStateChanged;
+
+            // Update progress info.
+            var progressInfo = m_Model.ProgressInfo;
+            if (progressInfo != null)
             {
-                EditModeTestCallbacks.RestoringTestContext();
+                OnOperationStatusChange(true);
+                OnOperationProgressChange(m_Model.ProgressInfo);
             }
 
-            if (!CheckForCancellation())
-                if (Test.RunState == RunState.Explicit && !_childFilter.IsExplicitMatch(Test))
-                    SkipFixture(ResultState.Explicit, GetSkipReason(), null);
-                else
-                    switch (Test.RunState)
-                    {
-                        default:
-                        case RunState.Runnable:
-                        case RunState.Explicit:
-                            Result.SetResult(ResultState.Success);
-
-                            CreateChildWorkItems();
-
-                            if (Children.Count > 0)
-                            {
-                                if (!m_DontRunRestoringResult)
-                                {
-                                    //This is needed to give the editor a chance to go out of playmode if needed before creating objects.
-                                    //If we do not, the objects could be automatically destroyed when exiting playmode and could result in errors later on
-                                    yield return null;
-                                    PerformOneTimeSetUp();
-                                }
-
-                                if (!CheckForCancellation())
-                                {
-                                    switch (Result.ResultState.Status)
-                                    {
-                                        case TestStatus.Passed:
-                                            foreach (var child in RunChildren())
-                                            {
-                                                if (CheckForCancellation())
-                                                {
-                                                    yield break;
-                                                }
-
-                                                yield return child;
-                                            }
-                                            break;
-                                        case TestStatus.Skipped:
-                                        case TestStatus.Inconclusive:
-                                        case TestStatus.Failed:
-                                            SkipChildren(_suite, Result.ResultState.WithSite(FailureSite.Parent), "OneTimeSetUp: " + Result.Message);
-                                            break;
-                                    }
-                                }
-
-                                if (Context.ExecutionStatus != TestExecutionStatus.AbortRequested && !m_DontRunRestoringResult)
-                                {
-                                    PerformOneTimeTearDown();
-                                }
-                            }
-                            break;
-
-                        case RunState.Skipped:
-                            SkipFixture(ResultState.Skipped, GetSkipReason(), null);
-                            break;
-
-                        case RunState.Ignored:
-                            SkipFixture(ResultState.Ignored, GetSkipReason(), null);
-                            break;
-
-                        case RunState.NotRunnable:
-                            SkipFixture(ResultState.NotRunnable, GetSkipReason(), GetProviderStackTrace());
-                            break;
-                    }
-            if (!ResultedInDomainReload)
+            // Update error info.
+            var errorInfo = m_Model.ErrorInfo;
+            if (errorInfo != null)
             {
-                WorkItemComplete();
+                OnErrorOccurred(errorInfo);
             }
+            else
+            {
+                OnErrorCleared();
+            }
+
+            // Get initial values.
+            OnConflictStatusChange(m_Model.Conflicted);
+            OnRemoteRevisionsAvailabilityChange(m_Model.RemoteRevisionsAvailable);
+
+            PopulateInitialData();
         }
 
-        private bool CheckForCancellation()
+        /// <inheritdoc />
+        public void Stop()
         {
-            if (Context.ExecutionStatus != TestExecutionStatus.Running)
-            {
-                Result.SetResult(ResultState.Cancelled, "Test cancelled by user");
-                return true;
-            }
+            Assert.IsTrue(m_IsStarted, "The presenter has already been stopped.");
+            m_IsStarted = false;
 
-            return false;
+            m_Model.ConflictStatusChange -= OnConflictStatusChange;
+            m_Model.OperationStatusChange -= OnOperationStatusChange;
+            m_Model.OperationProgressChange -= OnOperationProgressChange;
+            m_Model.ErrorOccurred -= OnErrorOccurred;
+            m_Model.ErrorCleared -= OnErrorCleared;
+            m_Model.RemoteRevisionsAvailabilityChange -= OnRemoteRevisionsAvailabilityChange;
+            m_Model.BackButtonStateUpdated -= OnBackButtonStateUpdated;
+            m_Model.StateChanged -= OnStateChanged;
         }
 
-        private void InitializeSetUpAndTearDownCommands()
+        /// <summary>
+        /// Refresh state from the model.
+        /// </summary>
+        void OnStateChanged()
         {
-            List<SetUpTearDownItem> setUpTearDownItems = _suite.TypeInfo != null
-                ? CommandBuilder.BuildSetUpTearDownList(_suite.TypeInfo.Type, typeof(OneTimeSetUpAttribute), typeof(OneTimeTearDownAttribute))
-                : new List<SetUpTearDownItem>();
-
-            var actionItems = new List<TestActionItem>();
-            foreach (ITestAction action in Actions)
-            {
-                bool applyToSuite = (action.Targets & ActionTargets.Suite) == ActionTargets.Suite
-                    || action.Targets == ActionTargets.Default && !(Test is ParameterizedMethodSuite);
-
-                bool applyToTest = (action.Targets & ActionTargets.Test) == ActionTargets.Test
-                    && !(Test is ParameterizedMethodSuite);
-
-                if (applyToSuite)
-                    actionItems.Add(new TestActionItem(action));
-
-                if (applyToTest)
-                    Context.UpstreamActions.Add(action);
-            }
-
-            _setupCommand = CommandBuilder.MakeOneTimeSetUpCommand(_suite, setUpTearDownItems, actionItems);
-            _teardownCommand = CommandBuilder.MakeOneTimeTearDownCommand(_suite, setUpTearDownItems, actionItems);
+            PopulateInitialData();
         }
 
-        private void PerformOneTimeSetUp()
+        /// <summary>
+        /// Populate the view with the initial data from the model.
+        /// </summary>
+        void PopulateInitialData()
         {
-            var logScope = new LogScope();
-            try
-            {
-                _setupCommand.Execute(Context);
-            }
-            catch (Exception ex)
-            {
-                if (ex is NUnitException || ex is TargetInvocationException)
-                    ex = ex.InnerException;
+            // Set tab.
+            m_View.SetTab(m_Model.CurrentTabIndex);
 
-                Result.RecordException(ex, FailureSite.SetUp);
-            }
-
-            if (logScope.AnyFailingLogs())
-            {
-                Result.RecordException(new UnhandledLogMessageException(logScope.FailingLogs.First()));
-            }
-            logScope.Dispose();
+            // Update back navigation
+            OnBackButtonStateUpdated(m_Model.GetBackNavigation()?.text);
         }
 
-        private IEnumerable RunChildren()
+        /// <inheritdoc />
+        public IHistoryPresenter AssignHistoryPresenter(IHistoryView view)
         {
-            int childCount = Children.Count;
-            if (childCount == 0)
-                throw new InvalidOperationException("RunChildren called but item has no children");
+            var presenter = new HistoryPresenter(view, m_Model.ConstructHistoryModel(), m_Model);
+            view.Presenter = presenter;
+            return presenter;
+        }
 
-            _childTestCountdown = new CountdownEvent(childCount);
+        /// <inheritdoc />
+        public IChangesPresenter AssignChangesPresenter(IChangesView view)
+        {
+            var presenter = new ChangesPresenter(view, m_Model.ConstructChangesModel(), m_Model);
+            view.Presenter = presenter;
+            return presenter;
+        }
 
-            foreach (UnityWorkItem child in Children)
+        /// <inheritdoc />
+        public void RequestCancelJob()
+        {
+            m_Model.RequestCancelJob();
+        }
+
+        /// <inheritdoc />
+        public void UpdateTabIndex(int index)
+        {
+            m_Model.CurrentTabIndex = index;
+        }
+
+        /// <inheritdoc />
+        public void NavigateBack()
+        {
+            // Grab back action from the model, clear it, then invoke it.
+            var nav = m_Model.GetBackNavigation();
+            if (nav == null) return;
+            m_Model.UnregisterBackNavigation(nav.Value.id);
+            nav.Value.backAction.Invoke();
+        }
+
+        /// <summary>
+        /// Display an alert if there is conflicts detected.
+        /// </summary>
+        /// <param name="conflicts">True if conflicts exist.</param>
+        void OnConflictStatusChange(bool conflicts)
+        {
+            if (conflicts)
             {
-                if (CheckForCancellation())
-                {
-                    yield break;
-                }
-
-                var unityTestExecutionContext = new UnityTestExecutionContext(Context);
-                child.InitializeContext(unityTestExecutionContext);
-
-                var enumerable = child.Execute().GetEnumerator();
-
-                while (true)
-                {
-                    if (!enumerable.MoveNext())
-                    {
-                        break;
-                    }
-                    ResultedInDomainReload |= child.ResultedInDomainReload;
-                    yield return enumerable.Current;
-                }
-
-                _suiteResult.AddResult(child.Result);
-                childCount--;
+                m_View.AddAlert(k_ConflictsDetectedId, AlertBox.AlertLevel.Alert, StringAssets.conflictsDetected);
             }
-
-            if (childCount > 0)
+            else
             {
-                while (childCount-- > 0)
-                    CountDownChildTest();
+                m_View.RemoveAlert(k_ConflictsDetectedId);
             }
         }
 
-        private void CreateChildWorkItems()
+        /// <summary>
+        /// Display a progress bar if an operation has started.
+        /// </summary>
+        /// <param name="inProgress"></param>
+        void OnOperationStatusChange(bool inProgress)
         {
-            Children = new List<UnityWorkItem>();
-            var testSuite = _suite;
-
-            foreach (ITest test in testSuite.Tests)
+            if (inProgress)
             {
-                if (_childFilter.Pass(test))
-                {
-                    var child = m_Factory.Create(test, _childFilter);
-
-                    if (test.Properties.ContainsKey(PropertyNames.Order))
-                    {
-                        Children.Insert(0, child);
-                        _countOrder++;
-                    }
-                    else
-                    {
-                        Children.Add(child);
-                    }
-                }
+                m_View.AddOperationProgress();
             }
-
-            if (_countOrder != 0) SortChildren();
-        }
-
-        private class UnityWorkItemOrderComparer : IComparer<UnityWorkItem>
-        {
-            public int Compare(UnityWorkItem x, UnityWorkItem y)
+            else
             {
-                var xKey = int.MaxValue;
-                var yKey = int.MaxValue;
-
-                if (x.Test.Properties.ContainsKey(PropertyNames.Order))
-                    xKey = (int)x.Test.Properties[PropertyNames.Order][0];
-
-                if (y.Test.Properties.ContainsKey(PropertyNames.Order))
-                    yKey = (int)y.Test.Properties[PropertyNames.Order][0];
-
-                return xKey.CompareTo(yKey);
+                m_View.RemoveOperationProgress();
             }
         }
 
-        private void SortChildren()
+        /// <summary>
+        /// Update progress bar with incremental details.
+        /// </summary>
+        /// <param name="progressInfo"></param>
+        void OnOperationProgressChange(IProgressInfo progressInfo)
         {
-            Children.Sort(0, _countOrder, new UnityWorkItemOrderComparer());
+            m_View.SetOperationProgress(progressInfo.Title, progressInfo.Details,
+                progressInfo.PercentageComplete, progressInfo.CurrentCount,
+                progressInfo.TotalCount, progressInfo.PercentageProgressType, progressInfo.CanCancel);
         }
 
-        private void SkipFixture(ResultState resultState, string message, string stackTrace)
+        /// <summary>
+        /// Display an error.
+        /// </summary>
+        /// <param name="errorInfo"></param>
+        void OnErrorOccurred(IErrorInfo errorInfo)
         {
-            Result.SetResult(resultState.WithSite(FailureSite.SetUp), message, StackFilter.Filter(stackTrace));
-            SkipChildren(_suite, resultState.WithSite(FailureSite.Parent), "OneTimeSetUp: " + message);
-        }
-
-        private void SkipChildren(TestSuite suite, ResultState resultState, string message)
-        {
-            foreach (Test child in suite.Tests)
+            if (errorInfo.Behaviour == ErrorInfoBehavior.Alert)
             {
-                if (_childFilter.Pass(child))
-                {
-                    Context.Listener.TestStarted(child);
-                    TestResult childResult = child.MakeTestResult();
-                    childResult.SetResult(resultState, message);
-                    _suiteResult.AddResult(childResult);
-
-                    if (child.IsSuite)
-                        SkipChildren((TestSuite)child, resultState, message);
-
-                    Context.Listener.TestFinished(childResult);
-                }
+                m_View.AddAlert(k_ErrorOccuredId, AlertBox.AlertLevel.Alert, errorInfo.Message, (StringAssets.clear, m_Model.ClearError));
             }
         }
 
-        private void PerformOneTimeTearDown()
+        /// <summary>
+        /// Clear the error state.
+        /// </summary>
+        void OnErrorCleared()
         {
-            var logScope = new LogScope();
-            try
-            {
-                _teardownCommand.Execute(Context);
-            }
-            catch (Exception ex)
-            {
-                if (ex is NUnitException || ex is TargetInvocationException)
-                    ex = ex.InnerException;
-
-                Result.RecordException(ex, FailureSite.SetUp);
-            }
-
-            if (logScope.AnyFailingLogs())
-            {
-                Result.RecordException(new UnhandledLogMessageException(logScope.FailingLogs.First()));
-            }
-            logScope.Dispose();
+            m_View.RemoveAlert(k_ErrorOccuredId);
         }
 
-        private string GetSkipReason()
+        /// <summary>
+        /// Show or clear the revisions to fetch alert based on whether or not they are available.
+        /// </summary>
+        /// <param name="remoteRevisionsAvailable">True if there are remote revisions to pull down.</param>
+        void OnRemoteRevisionsAvailabilityChange(bool remoteRevisionsAvailable)
         {
-            return (string)Test.Properties.Get(PropertyNames.SkipReason);
-        }
-
-        private string GetProviderStackTrace()
-        {
-            return (string)Test.Properties.Get(PropertyNames.ProviderStackTrace);
-        }
-
-        private void CountDownChildTest()
-        {
-            _childTestCountdown.Signal();
-            if (_childTestCountdown.CurrentCount == 0)
+            if (remoteRevisionsAvailable)
             {
-                if (Context.ExecutionStatus != TestExecutionStatus.AbortRequested)
-                    PerformOneTimeTearDown();
-
-                foreach (var childResult in _suiteResult.Children)
-                    if (childResult.ResultState == ResultState.Cancelled)
-                    {
-                        this.Result.SetResult(ResultState.Cancelled, "Cancelled by user");
-                        break;
-                    }
-
-                WorkItemComplete();
+                m_View.AddAlert(k_RevisionsAvailableId, AlertBox.AlertLevel.Info, StringAssets.syncRemoteRevisionsMessage, (StringAssets.sync, m_Model.RequestSync));
+            }
+            else
+            {
+                m_View.RemoveAlert(k_RevisionsAvailableId);
             }
         }
 
-        public override void Cancel(bool force)
+        /// <summary>
+        /// Clear or show back navigation button.
+        /// </summary>
+        /// <param name="title">Text to display next to the back navigation. Null means no back navigation.</param>
+        void OnBackButtonStateUpdated([CanBeNull] string title)
         {
-            if (Children == null)
-                return;
-
-            foreach (var child in Children)
+            if (title == null)
             {
-                var ctx = child.Context;
-                if (ctx != null)
-                    ctx.ExecutionStatus = force ? TestExecutionStatus.AbortRequested : TestExecutionStatus.StopRequested;
-
-                if (child.State == WorkItemState.Running)
-                    child.Cancel(force);
+                m_View.ClearBackNavigation();
+            }
+            else
+            {
+                m_View.DisplayBackNavigation(title);
             }
         }
     }
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 using System;
+using JetBrains.Annotations;
+using Unity.Cloud.Collaborate.Assets;
+using Unity.Cloud.Collaborate.Models;
+using Unity.Cloud.Collaborate.Models.Enums;
+using Unity.Cloud.Collaborate.Views;
+using UnityEngine;
+using UnityEngine.Assertions;
+
+namespace Unity.Cloud.Collaborate.Presenters
+{
+    internal class StartPresenter : IStartPresenter
+    {
+        [NotNull]
+        readonly IStartView m_View;
+        [NotNull]
+        readonly IStartModel m_Model;
+
+        bool m_IsStarted;
+
+        public StartPresenter([NotNull] IStartView view, [NotNull] IStartModel model)
+        {
+            m_View = view;
+            m_Model = model;
+        }
+
+        /// <inheritdoc />
+        public void Start()
+        {
+            Assert.IsFalse(m_IsStarted, "The presenter has already been started.");
+            m_IsStarted = true;
+
+            m_Model.ProjectStatusChanged += OnProjectStatusChanged;
+            m_Model.StateChanged += OnStateChanged;
+
+            PopulateInitialData();
+        }
+
+        /// <inheritdoc />
+        public void Stop()
+        {
+            Assert.IsTrue(m_IsStarted, "The presenter has already been stopped

@@ -1,57 +1,76 @@
 using System;
-using System.Collections;
-using UnityEditor;
+using System.Collections.Generic;
+using JetBrains.Annotations;
+using Unity.Cloud.Collaborate.Models.Api;
+using Unity.Cloud.Collaborate.Models.Structures;
+using Unity.Cloud.Collaborate.UserInterface;
+using UnityEngine;
+using UnityEngine.Assertions;
 
-namespace UnityEngine.TestTools
+namespace Unity.Cloud.Collaborate.Models
 {
-    /// <summary>
-    /// Implements <see cref="IEditModeTestYieldInstruction"/>. Creates a yield instruction to enter Play Mode.
-    /// </summary>
-    public class EnterPlayMode : IEditModeTestYieldInstruction
+    internal class HistoryModel : IHistoryModel
     {
-        /// <summary>
-        /// Returns true if the instruction expects a domain reload to occur.
-        /// </summary>
-        public bool ExpectDomainReload { get; }
-        /// <summary>
-        /// Returns true if the instruction expects the Unity Editor to be in **Play Mode**.
-        /// </summary>
-        public bool ExpectedPlaymodeState { get; private set; }
-        /// <summary>
-        /// When creating an Editor test that uses the UnityTest attribute, use this to trigger the Editor to enter Play Mode.
-        /// Throws an exception if the Editor is already in Play Mode or if there is a script compilation error.
-        /// </summary>
-        /// <param name="expectDomainReload">A flag indication whether to expect a domain reload.</param>
-        public EnterPlayMode(bool expectDomainReload = true)
+        [NotNull]
+        readonly ISourceControlProvider m_Provider;
+
+        [NotNull]
+        readonly HashSet<string> m_Requests;
+        const string k_RequestPage = "request-page";
+        const string k_RequestEntry = "request-entry";
+        const string k_RequestEntryNumber = "request-entry-number";
+
+        /// <inheritdoc />
+        public event Action HistoryListUpdated;
+
+        /// <inheritdoc />
+        public event Action<IReadOnlyList<IHistoryEntry>> HistoryListReceived;
+
+        /// <inheritdoc />
+        public event Action<IHistoryEntry> SelectedRevisionReceived;
+
+        /// <inheritdoc />
+        public event Action<bool> BusyStatusUpdated;
+
+        /// <inheritdoc />
+        public event Action<int?> EntryCountUpdated;
+
+        /// <inheritdoc />
+        public event Action StateChanged;
+
+        public HistoryModel([NotNull] ISourceControlProvider provider)
         {
-            ExpectDomainReload = expectDomainReload;
+            m_Provider = provider;
+            m_Requests = new HashSet<string>();
+            SelectedRevisionId = string.Empty;
+            SavedRevisionId = string.Empty;
         }
 
-        /// <summary>
-        /// Performs the multi-step instructions of entering PlayMode.
-        /// </summary>
-        /// <returns>An IEnumerator with the async steps.</returns>
-        /// <exception cref="Exception">An exception is thrown if the editor is already in PlayMode or if script compilation failed.</exception>
-        public IEnumerator Perform()
+        /// <inheritdoc />
+        public void OnStart()
         {
-            if (EditorApplication.isPlaying)
-            {
-                throw new Exception("Editor is already in PlayMode");
-            }
-            if (EditorUtility.scriptCompilationFailed)
-            {
-                throw new Exception("Script compilation failed");
-            }
-            yield return null;
-            ExpectedPlaymodeState = true;
-
-            EditorApplication.UnlockReloadAssemblies();
-            EditorApplication.isPlaying = true;
-
-            while (!EditorApplication.isPlaying)
-            {
-                yield return null;
-            }
+            // Setup events
+            m_Provider.UpdatedHistoryEntries += OnUpdatedHistoryEntries;
         }
-    }
-}
+
+        /// <inheritdoc />
+        public void OnStop()
+        {
+            // Clean up.
+            m_Provider.UpdatedHistoryEntries -= OnUpdatedHistoryEntries;
+        }
+
+        /// <inheritdoc />
+        public void RestoreState(IWindowCache cache)
+        {
+            // Populate data.
+            PageNumber = cache.HistoryPageNumber;
+            SavedRevisionId = cache.SelectedHistoryRevision;
+
+            StateChanged?.Invoke();
+        }
+
+        /// <inheritdoc />
+        public void SaveState(IWindowCache cache)
+        {
+ 

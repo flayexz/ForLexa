@@ -1,36 +1,43 @@
-using System;
-using System.Collections.Generic;
-using UnityEditor.TestTools.TestRunner.Api;
-using UnityEngine.TestTools;
+tTabIndex { get; set; }
 
-namespace UnityEditor.TestTools.TestRunner
-{
-    internal class TestListJob
-    {
-        private CachingTestListProvider m_TestListProvider;
-        private TestPlatform m_Platform;
-        private Action<ITestAdaptor> m_Callback;
-        private IEnumerator<ITestAdaptor> m_ResultEnumerator;
-        public TestListJob(CachingTestListProvider testListProvider, TestPlatform platform, Action<ITestAdaptor> callback)
+        /// <inheritdoc />
+        public IHistoryModel ConstructHistoryModel()
         {
-            m_TestListProvider = testListProvider;
-            m_Platform = platform;
-            m_Callback = callback;
+            return m_HistoryModel;
         }
 
-        public void Start()
+        /// <inheritdoc />
+        public IChangesModel ConstructChangesModel()
         {
-            m_ResultEnumerator = m_TestListProvider.GetTestListAsync(m_Platform);
-            EditorApplication.update += EditorUpdate;
+            return m_ChangesModel;
         }
 
-        private void EditorUpdate()
+        /// <inheritdoc />
+        public void ClearError()
         {
-            if (!m_ResultEnumerator.MoveNext())
-            {
-                m_Callback(m_ResultEnumerator.Current);
-                EditorApplication.update -= EditorUpdate;
-            }
+            m_Provider.ClearError();
         }
-    }
-}
+
+        /// <inheritdoc />
+        public void RequestSync()
+        {
+            m_Provider.RequestSync();
+        }
+
+        /// <inheritdoc />
+        public void RequestCancelJob()
+        {
+            m_Provider.RequestCancelJob();
+        }
+
+        /// <inheritdoc />
+        public (string id, string text, Action backAction)? GetBackNavigation()
+        {
+            return m_BackNavigation;
+        }
+
+        /// <inheritdoc />
+        public void RegisterBackNavigation(string id, string text, Action backAction)
+        {
+            Assert.IsTrue(m_BackNavigation == null, "There should only be one back navigation registered at a time.");
+            m_BackNavigation = (id, text, 

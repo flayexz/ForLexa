@@ -1,98 +1,84 @@
-using System.Collections.Generic;
-using NUnit.Framework.Interfaces;
-using UnityEditor.IMGUI.Controls;
-using UnityEditor.TestTools.TestRunner.Api;
-using UnityEngine.SceneManagement;
-using UnityEngine.TestTools.TestRunner;
+using UnityEngine;
+using UnityEditor;
+using System.IO;
+using System;
 
-namespace UnityEditor.TestTools.TestRunner.GUI
+namespace Cinemachine.Editor
 {
-    internal class TestListTreeViewDataSource : TreeViewDataSource
+    public class ScriptableObjectUtility : ScriptableObject
     {
-        private bool m_ExpandTreeOnCreation;
-        private readonly TestListGUI m_TestListGUI;
-        private ITestAdaptor m_RootTest;
+        public static string kPackageRoot = "Packages/com.unity.cinemachine";
 
-        public TestListTreeViewDataSource(TreeViewController testListTree, TestListGUI testListGUI, ITestAdaptor rootTest) : base(testListTree)
+        /// <summary>Get the Cinemachine package install path.  Works whether CM is
+        /// a packman package or an ordinary asset.</summary>
+        public static string CinemachineInstallPath
         {
-            showRootItem = false;
-            rootIsCollapsable = false;
-            m_TestListGUI = testListGUI;
-            m_RootTest = rootTest;
-        }
-
-        public void UpdateRootTest(ITestAdaptor rootTest)
-        {
-            m_RootTest = rootTest;
-        }
-
-        public override void FetchData()
-        {
-            var sceneName = SceneManager.GetActiveScene().name;
-            if (sceneName.StartsWith("InitTestScene"))
-                sceneName = PlaymodeTestsController.GetController().settings.originalScene;
-
-            var testListBuilder = new TestTreeViewBuilder(m_RootTest, m_TestListGUI.ResultsByKey, m_TestListGUI.m_TestRunnerUIFilter);
-
-            m_RootItem = testListBuilder.BuildTreeView(null, false, sceneName);
-            SetExpanded(m_RootItem, true);
-            if (m_RootItem.hasChildren && m_RootItem.children.Count == 1)
-                SetExpanded(m_RootItem.children[0], true);
-
-            if (m_ExpandTreeOnCreation)
-                SetExpandedWithChildren(m_RootItem, true);
-
-            m_TestListGUI.newResultList = new List<TestRunnerResult>(testListBuilder.results);
-            m_TestListGUI.m_TestRunnerUIFilter.availableCategories = testListBuilder.AvailableCategories;
-            m_NeedRefreshRows = true;
-        }
-
-        public override bool IsRenamingItemAllowed(TreeViewItem item)
-        {
-            return false;
-        }
-
-        public void ExpandTreeOnCreation()
-        {
-            m_ExpandTreeOnCreation = true;
-        }
-
-        public override bool IsExpandable(TreeViewItem item)
-        {
-            if (item is TestTreeViewItem)
-                return ((TestTreeViewItem)item).IsGroupNode;
-            return base.IsExpandable(item);
-        }
-
-        protected override List<TreeViewItem> Search(TreeViewItem rootItem, string search)
-        {
-            var result = new List<TreeViewItem>();
-
-            if (rootItem.hasChildren)
+            get
             {
-                foreach (var child in rootItem.children)
+                // First see if we're a UPM package - use some asset that we expect to find
+                string path = Path.GetFullPath(kPackageRoot + "/Editor/EditorResources/cm_logo_sm.png");
+                int index = path.LastIndexOf("/Editor");
+                if (index < 0 || !File.Exists(path))
                 {
-                    SearchTestTree(child, search, result);
+                    // Try as an ordinary asset
+                    ScriptableObject dummy = ScriptableObject.CreateInstance<ScriptableObjectUtility>();
+                    path = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject(dummy));
+                    if (path.Length > 0)
+                        path = Path.GetFullPath(path);
+                    DestroyImmediate(dummy);
                 }
+                path = path.Replace('\\', '/'); // because of GetFullPath()
+                index = path.LastIndexOf("/Editor");
+                if (index >= 0)
+                    path = path.Substring(0, index);
+                if (path.Length > 0)
+                    path = Path.GetFullPath(path);  // stupid backslashes
+                return path;
             }
-            return result;
         }
 
-        protected void SearchTestTree(TreeViewItem item, string search, IList<TreeViewItem> searchResult)
+        /// <summary>Get the Cinemachine package install path.  Works whether CM is
+        /// a packman package or an ordinary asset.</summary>
+        public static string CinemachineRealativeInstallPath
         {
-            var testItem = item as TestTreeViewItem;
-            if (!testItem.IsGroupNode)
+            get
             {
-                if (testItem.FullName.ToLower().Contains(search))
-                {
-                    searchResult.Add(item);
-                }
-            }
-            else if (item.children != null)
-            {
-                foreach (var child in item.children)
-                    SearchTestTree(child, search, searchResult);
+                ScriptableObject dummy = ScriptableObject.CreateInstance<ScriptableObjectUtility>();
+                var path = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject(dummy));
+                DestroyImmediate(dummy);
+                var index = path.LastIndexOf("/Editor");
+                if (index >= 0)
+                    path = path.Substring(0, index);
+                return path;
             }
         }
-    }
-}
+
+        /// <summary>Create a scriptable object asset</summary>
+        public static T CreateAt<T>(string assetPath) where T : ScriptableObject
+        {
+            return CreateAt(typeof(T), assetPath) as T;
+        }
+
+        /// <summary>Create a scriptable object asset</summary>
+        public static ScriptableObject CreateAt(Type assetType, string assetPath)
+        {
+            ScriptableObject asset = ScriptableObject.CreateInstance(assetType);
+            if (asset == null)
+            {
+                Debug.LogError("failed to create instance of " + assetType.Name + " at " + assetPath);
+                return null;
+            }
+            AssetDatabase.CreateAsset(asset, assetPath);
+            return asset;
+        }
+
+        public static void Create<T>(bool prependFolderName = false, bool trimName = true) where T : ScriptableObject
+        {
+            string className = typeof(T).Name;
+            string assetName = className;
+            string folder = GetSelectedAssetFolder();
+
+            if (trimName)
+            {
+                string[] standardNames = new string[] { "Asset", "Attributes", "Container" };
+                foreach (string standardNa

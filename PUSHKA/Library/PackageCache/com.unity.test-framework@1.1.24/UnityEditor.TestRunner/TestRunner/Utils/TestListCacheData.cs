@@ -1,27 +1,25 @@
-using System.Collections.Generic;
-using NUnit.Framework.Interfaces;
-using UnityEngine;
-using UnityEngine.TestRunner.TestLaunchers;
-using UnityEngine.TestTools;
+using System;
+using JetBrains.Annotations;
+using Unity.Cloud.Collaborate.Models.Api;
+using Unity.Cloud.Collaborate.Models.Structures;
+using Unity.Cloud.Collaborate.UserInterface;
+using UnityEngine.Assertions;
 
-namespace UnityEditor.TestTools.TestRunner
+namespace Unity.Cloud.Collaborate.Models
 {
-    internal class TestListCacheData : ScriptableSingleton<TestListCacheData>, ITestListCacheData
+    internal class MainModel : IMainModel
     {
-        [SerializeField]
-        private List<TestPlatform> m_Platforms = new List<TestPlatform>();
+        [NotNull]
+        readonly ISourceControlProvider m_Provider;
 
-        [SerializeField]
-        private List<ITest> m_CachedData = new List<ITest>();
+        /// <inheritdoc />
+        public event Action<bool> ConflictStatusChange;
 
-        public List<TestPlatform> platforms
-        {
-            get { return m_Platforms; }
-        }
+        /// <inheritdoc />
+        public event Action<bool> OperationStatusChange;
 
-        public List<ITest> cachedData
-        {
-            get { return m_CachedData; }
-        }
-    }
-}
+        /// <inheritdoc />
+        public event Action<IProgressInfo> OperationProgressChange;
+
+        /// <inheritdoc />
+        public event Action<IErrorInfo> ErrorOccur

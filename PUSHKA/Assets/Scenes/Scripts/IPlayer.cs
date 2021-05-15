@@ -3,6 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public interface IPlayer
-{
-    void Move();
+{ 
+    void TakeDamage(double damage);
 }

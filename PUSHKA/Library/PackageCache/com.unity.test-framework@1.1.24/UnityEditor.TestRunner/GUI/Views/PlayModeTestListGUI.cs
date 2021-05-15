@@ -1,241 +1,224 @@
-using System;
-using System.IO;
-using System.Linq;
-using UnityEditor.SceneManagement;
-using UnityEditor.TestTools.TestRunner.Api;
-using UnityEngine;
-using UnityEngine.TestTools;
-
-namespace UnityEditor.TestTools.TestRunner.GUI
-{
-    [Serializable]
-    internal class PlayModeTestListGUI : TestListGUI
-    {
-        private struct PlayerMenuItem
-        {
-            public GUIContent name;
-            public bool filterSelectedTestsOnly;
-            public bool buildOnly;
-        }
-
-        [SerializeField]
-        private int m_SelectedOption;
-
-        public override TestMode TestMode
-        {
-            get { return TestMode.PlayMode; }
-        }
-
-        private string GetBuildText()
-        {
-            switch (EditorUserBuildSettings.activeBuildTarget)
-            {
-                case BuildTarget.Android:
-                    if (EditorUserBuildSettings.exportAsGoogleAndroidProject)
-                        return "Export";
-                    break;
-                case BuildTarget.iOS:
-                    return "Export";
+etDatabase.LoadAssetAtPath<Texture2D>(
+                        ScriptableObjectUtility.CinemachineRealativeInstallPath
+                            + "/Editor/EditorResources/cinemachine_header.tif");
+                ;
+                if (sCinemachineHeader != null)
+                    sCinemachineHeader.hideFlags = HideFlags.DontSaveInEditor;
+                return sCinemachineHeader;
             }
-            return "Build";
         }
 
-        private string PickBuildLocation()
-        {
-            var target = EditorUserBuildSettings.activeBuildTarget;
-            var targetGroup = BuildPipeline.GetBuildTargetGroup(target);
-            var lastLocation = EditorUserBuildSettings.GetBuildLocation(target);
-            var extension = PostprocessBuildPlayer.GetExtensionForBuildTarget(targetGroup, target, BuildOptions.None);
-            var defaultName = FileUtil.GetLastPathNameComponent(lastLocation);
-            lastLocation = string.IsNullOrEmpty(lastLocation) ? string.Empty : Path.GetDirectoryName(lastLocation);
-            bool updateExistingBuild;
-            var location = EditorUtility.SaveBuildPanel(target, $"{GetBuildText()} {target}", lastLocation, defaultName, extension,
-                out updateExistingBuild);
-            if (!string.IsNullOrEmpty(location))
-                EditorUserBuildSettings.SetBuildLocation(target, location);
-            return location;
-        }
+        private static readonly string kCoreSettingsFoldKey     = "CNMCN_Core_Folded";
+        private static readonly string kComposerSettingsFoldKey = "CNMCN_Composer_Folded";
 
-        private void ExecuteAction(PlayerMenuItem item)
+        internal static event Action AdditionalCategories = null;
+
+        static CinemachineSettings()
         {
-            var runSettings = new PlayerLauncherTestRunSettings();
-            runSettings.buildOnly = item.buildOnly;
-            if (runSettings.buildOnly)
+            if (CinemachineLogoTexture != null)
             {
-                runSettings.buildOnlyLocationPath = PickBuildLocation();
-                if (string.IsNullOrEmpty(runSettings.buildOnlyLocationPath))
+                EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyGUI;
+            }
+        }
+
+        class Styles {
+            //private static readonly GUIContent sCoreShowHiddenObjectsToggle = new GUIContent("Show Hidden Objects", "If checked, Cinemachine hidden objects will be shown in the inspector.  This might be necessary to repair broken script mappings when upgrading from a pre-release version");
+            public static readonly GUIContent sCoreActiveGizmosColour = new GUIContent("Active Virtual Camera", "The colour for the active virtual camera's gizmos");
+            public static readonly GUIContent sCoreInactiveGizmosColour = new GUIContent("Inactive Virtual Camera", "The colour for all inactive virtual camera gizmos");
+            public static readonly GUIContent sComposerOverlayOpacity = new GUIContent("Overlay Opacity", "The alpha of the composer's overlay when a virtual camera is selected with composer module enabled");
+            public static readonly GUIContent sComposerHardBoundsOverlay = new GUIContent("Hard Bounds Overlay", "The colour of the composer overlay's hard bounds region");
+            public static readonly GUIContent sComposerSoftBoundsOverlay = new GUIContent("Soft Bounds Overlay", "The colour of the composer overlay's soft bounds region");
+            public static readonly GUIContent sComposerTargetOverlay = new GUIContent("Composer Target", "The colour of the composer overlay's target");
+            public static readonly GUIContent sComposerTargetOverlayPixels = new GUIContent("Target Size (px)", "The size of the composer overlay's target box in pixels");
+        }
+
+        private const string kCinemachineHeaderPath = "cinemachine_header.tif";
+        private const string kCinemachineDocURL = @"http://www.cinemachineimagery.com/documentation/";
+
+        private static Vector2 sScrollPosition = Vector2.zero;
+
+#if UNITY_2019_1_OR_NEWER
+        [SettingsProvider]
+        static SettingsProvider CreateProjectSettingsProvider()
+        {
+            var provider = new SettingsProvider("Preferences/Cinemachine", SettingsScope.User, SettingsProvider.GetSearchKeywordsFromGUIContentProperties<Styles>());
+            provider.guiHandler = (sarchContext) => OnGUI();
+            return provider;
+        }
+#else
+        [PreferenceItem("Cinemachine")]
+#endif
+        private static void OnGUI()
+        {
+            if (CinemachineHeader != null)
+            {
+                const float kWidth = 350f;
+                float aspectRatio = (float)CinemachineHeader.height / (float)CinemachineHeader.width;
+                GUILayout.BeginScrollView(Vector2.zero, false, false, GUILayout.Width(kWidth), GUILayout.Height(kWidth * aspectRatio));
+                Rect texRect = new Rect(0f, 0f, kWidth, kWidth * aspectRatio);
+
+                GUILayout.BeginArea(texRect);
+                GUI.DrawTexture(texRect, CinemachineHeader, ScaleMode.ScaleToFit);
+                GUILayout.EndArea();
+
+                GUILayout.EndScrollView();
+            }
+
+            sScrollPosition = GUILayout.BeginScrollView(sScrollPosition);
+
+            //CinemachineCore.sShowHiddenObjects
+            //    = EditorGUILayout.Toggle("Show Hidden Objects", CinemachineCore.sShowHiddenObjects);
+
+            ShowCoreSettings = EditorGUILayout.Foldout(ShowCoreSettings, "Runtime Settings", true);
+            if (ShowCoreSettings)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+                Color newActiveGizmoColour = EditorGUILayout.ColorField(Styles.sCoreActiveGizmosColour, CinemachineCoreSettings.ActiveGizmoColour);
+
+                if (EditorGUI.EndChangeCheck())
                 {
-                    Debug.LogWarning("Aborting, build selection was canceled.");
-                    return;
-                }
-            }
-
-            if (item.filterSelectedTestsOnly)
-                RunTestsInPlayer(runSettings, SelectedTestsFilter);
-            else
-            {
-                var filter = new UITestRunnerFilter { categoryNames = m_TestRunnerUIFilter.CategoryFilter };
-                RunTestsInPlayer(runSettings, filter);
-            }
-        }
-
-        public override void PrintHeadPanel()
-        {
-            EditorGUILayout.BeginHorizontal(GUILayout.ExpandHeight(false));
-            base.PrintHeadPanel();
-
-            PlayerMenuItem[] menuItems;
-            
-            if (EditorUserBuildSettings.installInBuildFolder)
-            {
-                menuItems = new []
-                {
-                    // Note: We select here buildOnly = false, so build location dialog won't show up
-                    //       The player won't actually be ran when using together with EditorUserBuildSettings.installInBuildFolder
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent("Install All Tests In Build Folder"), buildOnly = false, filterSelectedTestsOnly = false
-                    },
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent("Install Selected Tests In Build Folder"), buildOnly = false, filterSelectedTestsOnly = true
-                    }
-                };
-            }
-            else
-            {
-                menuItems = new []
-                {
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent("Run All Tests"), buildOnly = false, filterSelectedTestsOnly = false
-                    },
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent("Run Selected Tests"), buildOnly = false, filterSelectedTestsOnly = true
-                    },
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent($"{GetBuildText()} All Tests"), buildOnly = true, filterSelectedTestsOnly = false
-                    },
-                    new PlayerMenuItem()
-                    {
-                        name = new GUIContent($"{GetBuildText()} Selected Tests"), buildOnly = true, filterSelectedTestsOnly = true
-                    },
-                };
-            }
-
-            m_SelectedOption = Math.Min(m_SelectedOption, menuItems.Length - 1);
-            var selectedMenuItem = menuItems[m_SelectedOption];
-            if (GUILayout.Button(
-                new GUIContent($"{selectedMenuItem.name.text} ({EditorUserBuildSettings.activeBuildTarget})"),
-                EditorStyles.toolbarButton))
-            {
-                ExecuteAction(selectedMenuItem);
-            }
-
-            if (GUILayout.Button(GUIContent.none, EditorStyles.toolbarDropDown))
-            {
-                Vector2 mousePos = Event.current.mousePosition;
-                EditorUtility.DisplayCustomMenu(new Rect(mousePos.x, mousePos.y, 0, 0),
-                    menuItems.Select(m => m.name).ToArray(),
-                    -1,
-                    (object userData, string[] options, int selected) => m_SelectedOption = selected,
-                    menuItems);
-            }
-
-            EditorGUILayout.EndHorizontal();
-            DrawFilters();
-            EditorGUILayout.BeginHorizontal(GUILayout.ExpandHeight(false));
-            EditorGUILayout.EndHorizontal();
-        }
-
-        public override void RenderNoTestsInfo()
-        {
-            if (!TestListGUIHelper.SelectedFolderContainsTestAssembly())
-            {
-                var noTestText = "No tests to show";
-                if (!PlayerSettings.playModeTestRunnerEnabled)
-                {
-                    const string testsArePulledFromCustomAssemblues = "Test Assemblies are defined by Assembly Definitions that references the \"nunit.framework.dll\" Assembly Reference or the Assembly Definition Reference \"UnityEngine.TestRunner\".";
-                    const string infoTextAboutTestsInAllAssemblies =
-                        "To have tests in all assemblies enable it in the Test Runner window context menu";
-                    noTestText += Environment.NewLine + testsArePulledFromCustomAssemblues + Environment.NewLine +
-                        infoTextAboutTestsInAllAssemblies;
+                    CinemachineCoreSettings.ActiveGizmoColour = newActiveGizmoColour;
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
                 }
 
-                EditorGUILayout.HelpBox(noTestText, MessageType.Info);
-                if (GUILayout.Button("Create PlayMode Test Assembly Folder"))
+                if (GUILayout.Button("Reset"))
                 {
-                    TestListGUIHelper.AddFolderAndAsmDefForTesting();
+                    CinemachineCoreSettings.ActiveGizmoColour = CinemachineCoreSettings.kDefaultActiveColour;
                 }
-            }
+                EditorGUILayout.EndHorizontal();
 
-            if (!TestListGUIHelper.CanAddPlayModeTestScriptAndItWillCompile())
-            {
-                UnityEngine.GUI.enabled = false;
-                EditorGUILayout.HelpBox("PlayMode test scripts can only be created in non editor test assemblies.", MessageType.Warning);
-            }
-            if (GUILayout.Button("Create Test Script in current folder"))
-            {
-                TestListGUIHelper.AddTest();
-            }
-            UnityEngine.GUI.enabled = true;
-        }
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+                Color newInactiveGizmoColour = EditorGUILayout.ColorField(Styles.sCoreInactiveGizmosColour, CinemachineCoreSettings.InactiveGizmoColour);
 
-        protected override void RunTests(UITestRunnerFilter[] filters)
-        {
-            foreach (var filter in filters)
-            {
-                filter.ClearResults(newResultList.OfType<UITestRunnerFilter.IClearableResult>().ToList());                
-            }
-
-            RerunCallbackData.instance.runFilters = filters;
-            RerunCallbackData.instance.testMode = TestMode.PlayMode;
-
-            var testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
-            testRunnerApi.Execute(new ExecutionSettings()
-            {
-                filters = filters.Select(filter => new Filter()
+                if (EditorGUI.EndChangeCheck())
                 {
-                    assemblyNames = filter.assemblyNames,
-                    categoryNames = filter.categoryNames,
-                    groupNames =  filter.groupNames,
-                    testMode = TestMode,
-                    testNames = filter.testNames
-                }).ToArray()
-            });
-        }
+                    CinemachineCoreSettings.InactiveGizmoColour = newInactiveGizmoColour;
+                    UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                }
 
-
-        protected void RunTestsInPlayer(PlayerLauncherTestRunSettings runSettings, params UITestRunnerFilter[] filters)
-        {
-            foreach (var filter in filters)
-            {
-                filter.ClearResults(newResultList.OfType<UITestRunnerFilter.IClearableResult>().ToList());
+                if (GUILayout.Button("Reset"))
+                {
+                    CinemachineCoreSettings.InactiveGizmoColour = CinemachineCoreSettings.kDefaultInactiveColour;
+                }
+                EditorGUILayout.EndHorizontal();
+                EditorGUI.indentLevel--;
             }
 
-            var testRunnerApi = ScriptableObject.CreateInstance<TestRunnerApi>();
-            testRunnerApi.Execute(new ExecutionSettings()
+            ShowComposerSettings = EditorGUILayout.Foldout(ShowComposerSettings, "Composer Settings", true);
+            if (ShowComposerSettings)
             {
-                overloadTestRunSettings = runSettings,
-                filters = filters.Select(filter => new Filter()
+                EditorGUI.indentLevel++;
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+
+                float overlayOpacity = EditorGUILayout.Slider(Styles.sComposerOverlayOpacity, ComposerSettings.OverlayOpacity, 0f, 1f);
+
+                if (EditorGUI.EndChangeCheck())
                 {
-                    assemblyNames = filter.assemblyNames,
-                    categoryNames = filter.categoryNames,
-                    groupNames = filter.groupNames,
-                    testMode = TestMode,
-                    testNames = filter.testNames
-                }).ToArray(),
-                targetPlatform = EditorUserBuildSettings.activeBuildTarget
-            });
+                    ComposerSettings.OverlayOpacity = overlayOpacity;
+                }
+
+                if (GUILayout.Button("Reset"))
+                {
+                    ComposerSettings.OverlayOpacity = ComposerSettings.kDefaultOverlayOpacity;
+                }
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+                Color newHardEdgeColor = EditorGUILayout.ColorField(Styles.sComposerHardBoundsOverlay, ComposerSettings.HardBoundsOverlayColour);
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ComposerSettings.HardBoundsOverlayColour = newHardEdgeColor;
+                }
+
+                if (GUILayout.Button("Reset"))
+                {
+                    ComposerSettings.HardBoundsOverlayColour = ComposerSettings.kDefaultHardBoundsColour;
+                }
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+                Color newSoftEdgeColor = EditorGUILayout.ColorField(Styles.sComposerSoftBoundsOverlay, ComposerSettings.SoftBoundsOverlayColour);
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ComposerSettings.SoftBoundsOverlayColour = newSoftEdgeColor;
+                }
+
+                if (GUILayout.Button("Reset"))
+                {
+                    ComposerSettings.SoftBoundsOverlayColour = ComposerSettings.kDefaultSoftBoundsColour;
+                }
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginChangeCheck();
+                Color newTargetColour = EditorGUILayout.ColorField(Styles.sComposerTargetOverlay, ComposerSettings.TargetColour);
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ComposerSettings.TargetColour = newTargetColour;
+                }
+
+                if (GUILayout.Button("Reset"))
+                {
+                    ComposerSettings.TargetColour = ComposerSettings.kDefaultTargetColour;
+                }
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUI.BeginChangeCheck();
+                float targetSide = EditorGUILayout.FloatField(Styles.sComposerTargetOverlayPixels, ComposerSettings.TargetSize);
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    ComposerSettings.TargetSize = targetSide;
+                }
+                EditorGUI.indentLevel--;
+            }
+
+            if (AdditionalCategories != null)
+            {
+                AdditionalCategories();
+            }
+
+            GUILayout.EndScrollView();
+
+            //if (GUILayout.Button("Open Documentation"))
+            //{
+            //    Application.OpenURL(kCinemachineDocURL);
+            //}
         }
 
-        public override TestPlatform TestPlatform { get { return TestPlatform.PlayMode; } }
-
-        protected override bool IsBusy()
+        private static void OnHierarchyGUI(int instanceID, Rect selectionRect)
         {
-            return TestRunnerApi.IsRunActive() || PlaymodeLauncher.IsRunning  || EditorApplication.isCompiling || EditorApplication.isPlaying;
+            GameObject instance = EditorUtility.InstanceIDToObject(instanceID) as GameObject;
+            if (instance == null)
+            {
+                // Object in process of being deleted?
+                return;
+            }
+
+            if (instance.GetComponent<CinemachineBrain>() != null)
+            {
+                Rect texRect = new Rect(selectionRect.xMax - selectionRect.height, selectionRect.yMin, selectionRect.height, selectionRect.height);
+                GUI.DrawTexture(texRect, CinemachineLogoTexture, ScaleMode.ScaleAndCrop);
+            }
         }
-    }
-}
+
+        internal static Color UnpackColour(string str)
+        {
+            if (!string.IsNullOrEmpty(str))
+            {
+                byte[] bytes = Base64Decode(str);
+
+                if ((bytes != null) && bytes.Length == 16)
+                {
+                    float r = BitConverter.ToSingle(bytes, 0);
+                 

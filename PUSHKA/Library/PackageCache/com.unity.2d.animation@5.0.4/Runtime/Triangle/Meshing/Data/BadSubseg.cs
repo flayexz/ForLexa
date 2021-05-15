@@ -1,37 +1,31 @@
-// -----------------------------------------------------------------------
-// <copyright file="BadSubseg.cs" company="">
-// Original Triangle code by Jonathan Richard Shewchuk, http://www.cs.cmu.edu/~quake/triangle.html
-// Triangle.NET code by Christian Woltering, http://triangle.codeplex.com/
-// </copyright>
-// -----------------------------------------------------------------------
+      range.y = Mathf.Min(range.x + minimumPlayRangeTime, (float)editSequence.duration);
 
-namespace UnityEngine.U2D.Animation.TriangleNet
-    .Meshing.Data
-{
-    using System;
-    using Animation.TriangleNet.Geometry;
-    using Animation.TriangleNet.Topology;
-
-    /// <summary>
-    /// A queue used to store encroached subsegments.
-    /// </summary>
-    /// <remarks>
-    /// Each subsegment's vertices are stored so that we can check whether a
-    /// subsegment is still the same.
-    /// </remarks>
-    class BadSubseg
-    {
-        public Osub subseg; // An encroached subsegment.
-        public Vertex org, dest; // Its two vertices.
-
-        public override int GetHashCode()
-        {
-            return subseg.seg.hash;
+            return range;
         }
 
-        public override string ToString()
+        void EnsureWindowTimeConsistency()
         {
-            return String.Format("B-SID {0}", subseg.seg.hash);
+            if (masterSequence.director != null && masterSequence.viewModel != null && !ignorePreview)
+                masterSequence.time = masterSequence.viewModel.windowTime;
         }
-    }
-}
+
+        void SynchronizeSequencesAfterPlayback()
+        {
+            // Synchronizing editSequence will synchronize all view models up to the master
+            SynchronizeViewModelTime(editSequence);
+        }
+
+        static void SynchronizeViewModelTime(ISequenceState state)
+        {
+            if (state.director == null || state.viewModel == null)
+                return;
+
+            var t = state.time;
+            state.time = t;
+        }
+
+        // because we may be evaluating outside the duration of the root playable
+        //  we explicitly set the time - this causes the graph to not 'advance' the time
+        //  because advancing it can force it to change due to wrapping to the duration
+        // This can happen if the graph is force evaluated outside it's duration
+        // case 

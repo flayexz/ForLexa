@@ -1,48 +1,38 @@
-using System;
-using System.Collections;
-using UnityEditor;
-
-namespace UnityEngine.TestTools
-{
-    /// <summary>
-    /// Implements <see cref="IEditModeTestYieldInstruction"/>. A new instance of the class is a yield instruction to exit Play Mode.
-    /// </summary>
-    public class ExitPlayMode : IEditModeTestYieldInstruction
-    {
-        /// <summary>
-        /// Gets the value of ExpectDomainReload
+ the file at the given path.
         /// </summary>
-        public bool ExpectDomainReload { get; }
-        /// <summary>
-        /// Gets the value of ExpectedPlaymodeState
-        /// </summary>
-        public bool ExpectedPlaymodeState { get; private set; }
-        /// <summary>
-        /// Sets ExpectDomainReload and ExpectedPlaymodeState to false.
-        /// </summary>
-        public ExitPlayMode()
-        {
-            ExpectDomainReload = false;
-            ExpectedPlaymodeState = false;
-        }
+        /// <param name="entry">Entry to discard.</param>
+        void RequestDiscard([NotNull] IChangeEntry entry);
 
         /// <summary>
-        /// Performs the multi-step instruction of exiting PlayMode.
+        /// Request discard of the given list of files.
         /// </summary>
-        /// <returns>An IEnumerator with the async steps.</returns>
-        /// <exception cref="Exception">An exception is thrown if the editor is not in PlayMode.</exception>
-        public IEnumerator Perform()
-        {
-            if (!EditorApplication.isPlayingOrWillChangePlaymode)
-            {
-                throw new Exception("Editor is already in EditMode");
-            }
+        /// <param name="entries">List of entries to discard.</param>
+        void RequestBulkDiscard([NotNull] IReadOnlyList<IChangeEntry> entries);
 
-            EditorApplication.isPlaying = false;
-            while (EditorApplication.isPlaying)
-            {
-                yield return null;
-            }
-        }
-    }
-}
+        /// <summary>
+        /// Request publish with the given message and list of files.
+        /// </summary>
+        /// <param name="message">Message for the revision.</param>
+        /// <param name="changes">Changes to publish.</param>
+        void RequestPublish([NotNull] string message, [NotNull] IReadOnlyList<IChangeEntry> changes);
+
+        /// <summary>
+        /// Show the difference between both version of a conflicted file.
+        /// </summary>
+        /// <param name="path">Path of the file to show.</param>
+        void RequestShowConflictedDifferences([NotNull] string path);
+
+        /// <summary>
+        /// Request to choose merge for the provided conflict.
+        /// </summary>
+        /// <param name="path">Path of the file to choose merge for.</param>
+        void RequestChooseMerge([NotNull] string path);
+
+        /// <summary>
+        /// Request to choose mine for the provided conflict.
+        /// </summary>
+        /// <param name="paths">Paths of the files to choose mine for.</param>
+        void RequestChooseMine([NotNull] string[] paths);
+
+        /// <summary>
+        /// Request to choose remote for the
