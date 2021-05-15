@@ -6,23 +6,16 @@ using UnityEngine.UI;
 
 public class ScoreManager : MonoBehaviour
 {
-    private int score;
+    public int Score { get; set; }
     public Text scoreDisplay;
-    
+
     private void Update()
     {
-        scoreDisplay.text = "Score: " + score;
-    }
-
-    public void UpdateScore(int value)
-    {
-        var newScore = score + value;
-        if(newScore >= 0)
-            score = newScore;
+        scoreDisplay.text = "Score: " + Score;
     }
 
     public void ResetScore()
     {
-        score = 0;
+        Score = 0;
     }
 }

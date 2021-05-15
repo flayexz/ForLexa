@@ -5,29 +5,40 @@ using UnityEngine;
 public class BoxOfRandomGun : MonoBehaviour
 {
     [SerializeField] private Gun[] possibleWeapons;
-    [SerializeField] private float lifeTimeSpawnGun;
+    [SerializeField] private float lifetimeSpawnedGunInBox;
+    [SerializeField] private int costOfGeneratingNewWeapons;
     private Player player;
     private Bounds triggerZone;
-    private Gun spawnGun;
+    private Gun spawnedGun;
+    private ScoreManager scoreOfPlayer;
     
     void Start()
     {
         player = FindObjectOfType<Player>();
         triggerZone = GetComponent<Collider2D>().bounds;
+        scoreOfPlayer = FindObjectOfType<ScoreManager>();
     }
     
     void Update()
     {
-        if (spawnGun == null &&
-            triggerZone.Contains(player.transform.position) && Input.GetKeyDown(KeyCode.E))
+        if (CheckSpawnConditions())
+        {
             Spawn();
+            scoreOfPlayer.Score -= costOfGeneratingNewWeapons;
+        }
     }
 
     private void Spawn()
     {
-        spawnGun = Instantiate(possibleWeapons[Random.Range(0, possibleWeapons.Length)],
+        spawnedGun = Instantiate(possibleWeapons[Random.Range(0, possibleWeapons.Length)],
             transform.position, Quaternion.identity);
-        Destroy(spawnGun.gameObject, lifeTimeSpawnGun);
+        Destroy(spawnedGun.gameObject, lifetimeSpawnedGunInBox);
+    }
+
+    private bool CheckSpawnConditions()
+    {
+        return spawnedGun == null && triggerZone.Contains(player.transform.position) && 
+               scoreOfPlayer.Score > costOfGeneratingNewWeapons && Input.GetKeyDown(KeyCode.E);
     }
     
 }

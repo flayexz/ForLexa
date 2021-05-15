@@ -26,26 +26,13 @@ public class Player : MonoBehaviour
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Q))
-            ChangeWeapon();
+            ChangeWeaponToNExtOneFromInventory();
     }
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        Gun pickUpWeapon;
-        if (collision.TryGetComponent<Gun>(out pickUpWeapon))
-        {
-            var gun = unlockedWeapons.Find(weapon => weapon.Name == pickUpWeapon.Name);
-            if (gun != null)
-                gun.AddCartiges();
-            else if (unlockedWeapons.Count >= maxAmountOfGuns)
-                ChangeWeaponInInventory(pickUpWeapon.Name);
-            else
-            {
-                AddWeaponInInventory(pickUpWeapon.Name);
-                ChangeWeapon();
-            }
-            Destroy(collision.gameObject);
-        }
+        if (collision.TryGetComponent<Gun>(out Gun pickUpWeapon))
+            PickUpWeapon(collision, pickUpWeapon);
     }
 
     private void FixedUpdate()
@@ -61,13 +48,28 @@ public class Player : MonoBehaviour
         player.MovePosition(player.position + moveVelocity * Time.fixedDeltaTime);
     }
 
+    private void PickUpWeapon(Collider2D collision, Gun pickUpWeapon)
+    {
+        var gun = unlockedWeapons.Find(weapon => weapon.Name == pickUpWeapon.Name);
+        if (gun != null)
+            gun.AddCartiges();
+        else if (unlockedWeapons.Count >= maxAmountOfGuns)
+            ChangeCurrentWeaponOnNewWeapon(pickUpWeapon.Name);
+        else
+        {
+            AddWeaponInInventory(pickUpWeapon.Name);
+            ChangeWeaponToNExtOneFromInventory();
+        }
+        Destroy(collision.gameObject);
+    }
+    
     private void AddWeaponInInventory(string nameOfNewWeapon)
     {
         var newGun = allWeapons.First(weapon => weapon.Name == nameOfNewWeapon);
         unlockedWeapons.Add(newGun);
     }
     
-    private void ChangeWeaponInInventory(string nameOfNewWeapon)
+    private void ChangeCurrentWeaponOnNewWeapon(string nameOfNewWeapon)
     {
         var newGun = allWeapons.First(weapon => weapon.Name == nameOfNewWeapon);
         unlockedWeapons[currentNumberOfGun].gameObject.SetActive(false);
@@ -75,7 +77,7 @@ public class Player : MonoBehaviour
         newGun.gameObject.SetActive(true);
     }
     
-    private void ChangeWeapon()
+    private void ChangeWeaponToNExtOneFromInventory()
     {
         if (unlockedWeapons.Count < 1)
             return;

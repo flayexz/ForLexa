@@ -26,7 +26,7 @@ public class Zombie : MonoBehaviour
         if (Health <= 0)
         {
             Destroy(gameObject);
-            scoreManager.UpdateScore(KillPoints);
+            scoreManager.Score += KillPoints;
         }
     }
 

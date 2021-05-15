@@ -51,6 +51,7 @@ MonoBehaviour:
   TimeBetweenShotForGun: 0.2
   InHandsPlayer: 0
   ammo: 0
+  currentAmmo: 0
   name: augA3
 --- !u!212 &1598382984595566406
 SpriteRenderer:
@@ -91,7 +92,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 1
   m_Sprite: {fileID: 21300000, guid: 8173607b3412d514fa5c582f29ca0d54, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
