@@ -1,80 +1,63 @@
 using System;
-using System.Collections.Generic;
-using JetBrains.Annotations;
-using Unity.Cloud.Collaborate.Models.Structures;
+using System.Collections;
+using UnityEditor;
+using UnityEditorInternal;
 
-namespace Unity.Cloud.Collaborate.Models
+namespace UnityEngine.TestTools
 {
-    internal interface IHistoryModel : IModel
+    /// <summary>
+    /// WaitForDomainReload is an <see cref="IEditModeTestYieldInstruction"/> that you can yield in Edit Mode tests. It delays the execution of scripts until after an incoming domain reload. If the domain reload results in a script compilation failure, then it throws an exception.
+    /// </summary>
+    public class WaitForDomainReload : IEditModeTestYieldInstruction
     {
         /// <summary>
-        /// Event triggered when the history list has been updated.
+        /// Create a new instance of the `WaitForDomainReload` yield instruction.
+        /// <example>
+        /// <code>
+        /// [UnitySetUp]
+        /// public IEnumerator SetUp()
+        /// {
+        ///     File.Copy("Resources/MyDll.dll", @"Assets/MyDll.dll", true); // Trigger a domain reload.
+        ///     AssetDatabase.Refresh();
+        ///     yield return new WaitForDomainReload();
+        /// }
+        /// </code>
+        /// </example>
         /// </summary>
-        event Action HistoryListUpdated;
+        public WaitForDomainReload()
+        {
+            ExpectDomainReload = true;
+        }
 
         /// <summary>
-        /// Event triggered when the requested page of revisions is received.
+        /// Returns true if the instruction expects a domain reload to occur.
         /// </summary>
-        event Action<IReadOnlyList<IHistoryEntry>> HistoryListReceived;
+        public bool ExpectDomainReload { get;  }
+        /// <summary>
+        /// Returns true if the instruction expects the Unity Editor to be in **Play Mode**.
+        /// </summary>
+        public bool ExpectedPlaymodeState { get; }
 
         /// <summary>
-        /// Event triggered when the requested revision is received.
+        /// Perform the multi step action of waiting for a domain reload.
         /// </summary>
-        event Action<IHistoryEntry> SelectedRevisionReceived;
+        /// <returns>An IEnumerator with steps.</returns>
+        /// <exception cref="Exception">Throws an exception if script compilation failed or if the expected domain reload did not occur.</exception>
+        public IEnumerator Perform()
+        {
+            EditorApplication.UnlockReloadAssemblies();
 
-        /// <summary>
-        /// Event triggered when the busy status changes.
-        /// </summary>
-        event Action<bool> BusyStatusUpdated;
+            while (InternalEditorUtility.IsScriptReloadRequested() || EditorApplication.isCompiling)
+            {
+                yield return null;
+            }
 
-        /// <summary>
-        /// Event triggered when the requested entry count is received.
-        /// </summary>
-        event Action<int?> EntryCountUpdated;
-
-        /// <summary>
-        /// Whether or not the model is busy with a request.
-        /// </summary>
-        bool Busy { get; }
-
-        /// <summary>
-        /// Current page number.
-        /// </summary>
-        int PageNumber { get; set; }
-
-        /// <summary>
-        /// Currently selected revision id.
-        /// </summary>
-        [NotNull]
-        string SelectedRevisionId { get; }
-
-        /// <summary>
-        /// Revision saved before domain reload.
-        /// </summary>
-        [NotNull]
-        string SavedRevisionId { get; }
-
-        /// <summary>
-        /// True if a revision is currently selected.
-        /// </summary>
-        bool IsRevisionSelected { get; }
-
-        /// <summary>
-        /// Request the current page of given size. Result returns via the HistoryListReceived event.
-        /// </summary>
-        /// <param name="pageSize"></param>
-        void RequestPageOfRevisions(int pageSize);
-
-        /// <summary>
-        /// Request the revision with the given id. Result returned via the SelectedRevisionReceived event.
-        /// </summary>
-        /// <param name="revisionId"></param>
-        void RequestSingleRevision([NotNull] string revisionId);
-
-        /// <summary>
-        /// Request the count of entries. Result returned via the EntryCountUpdated event.
-        /// </summary>
-        void RequestEntryNumber();
-
-        /// <summary>
- 
+            // Add this point the domain reload should have occured and stopped any further progress on the instruction.
+            EditorApplication.LockReloadAssemblies();
+            throw new Exception(
+                EditorUtility.scriptCompilationFailed ? 
+                    "Script compilation failed" : 
+                    "Expected domain reload, but it did not occur");
+        }
+    }
+}

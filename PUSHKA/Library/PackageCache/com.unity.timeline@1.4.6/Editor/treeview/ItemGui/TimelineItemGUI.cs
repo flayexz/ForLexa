@@ -1,31 +1,93 @@
-* The [pre-extrapolate and post-extrapolate settings](clp_gap_extrap.md) for the Animation clip and for other Animation clips on the same track.
-* Animation clips on other Animation tracks that are bound to the same GameObject.
-* The position or animation of the GameObject in the Scene, outside the Timeline Asset.
+using System;
+using System.Collections.Generic;
+using UnityEngine.Timeline;
+using UnityEngine;
 
-## Gap extrapolation and easing clips
+namespace UnityEditor.Timeline
+{
+    static class ItemToItemGui
+    {
+        static Dictionary<object, TimelineItemGUI> s_ItemToItemGUI =
+            new Dictionary<object, TimelineItemGUI>();
 
-To successfully ease-in or ease-out an Animation clip, gap extrapolation must not be set based on the Animation clip being eased-in or eased-out. Gap extrapolation must either be set to **None** or set by another Animation clip.
+        public static void Add(TimelineClip clip, TimelineItemGUI gui)
+        {
+            s_ItemToItemGUI[clip] = gui;
+        }
 
-For example, the following ease-in transition has no effect because the Pre-Extrapolate for the Victory_Dance clip is set to **Hold**. This means that the ease-in creates a transition between the first frame of the Animation clip and the rest of the Animation clip.
+        public static void Add(IMarker marker, TimelineItemGUI gui)
+        {
+            s_ItemToItemGUI[marker] = gui;
+        }
 
-![The gap is set to **Hold** from the Animation clip (circled). The ease-in transition has no effect.](images/timeline_clip_ease_in_bad_gap.png)
+        public static TimelineClipGUI GetGuiForClip(TimelineClip clip)
+        {
+            return GetGuiForItem(clip) as TimelineClipGUI;
+        }
 
-_The gap is set to **Hold** from the Animation clip (circled). The ease-in transition has no effect._
+        public static TimelineMarkerGUI GetGuiForMarker(IMarker marker)
+        {
+            return GetGuiForItem(marker) as TimelineMarkerGUI;
+        }
 
-![To ease-in from the Idle clip, set pre-extrapolate for the Victory_Dance clip to **None**. The ease-in gap uses the post-extrapolate mode from the Idle clip (circled).](images/timeline_clip_ease_in_good_gap.png)
+        static TimelineItemGUI GetGuiForItem(object item)
+        {
+            if (item == null)
+                return null;
 
-_To ease-in from the Idle clip, set pre-extrapolate for the Victory_Dance clip to **None**. The ease-in gap uses the post-extrapolate mode from the Idle clip (circled)._
+            TimelineItemGUI gui;
+            s_ItemToItemGUI.TryGetValue(item, out gui);
+            return gui;
+        }
+    }
 
-## Overriding Animation tracks with ease-in and ease-out transitions
+    abstract class TimelineItemGUI : ISelectable
+    {
+        protected readonly DirectorStyles m_Styles;
 
-Use two Animation tracks bound to the same GameObject to create a smooth transition between two Animation clips.
+        public abstract ITimelineItem item { get; }
+        public abstract double start { get; }
+        public abstract double end { get; }
+        public abstract void Draw(Rect rect, bool rectChanged, WindowState state);
+        public abstract Rect RectToTimeline(Rect trackRect, WindowState state);
 
-For example, if two Animation tracks are bound to the same GameObject and a clip on the second track contains an ease-in transition, the ease-in transition creates a smooth transition between the animation on the previous track and the animation on the second track.
+        public virtual void Select() {}
+        public virtual bool IsSelected() { return false; }
+        public virtual void Deselect() {}
+        public virtual bool CanSelect() { return true; }
 
-![Example of using two Animation tracks, bound to the same GameObject, to create smooth transitions between Animation clips.](images/timeline_clip_ease_in_override_track.png)
+        public virtual void StartDrag() {}
+        public virtual void StopDrag() {}
 
-_Example of using two Animation tracks, bound to the same GameObject, to create smooth transitions between Animation clips._
+        public LayerZOrder zOrder { get; set; }
 
-In this example, the Animation clip on the first track is a repeated idle cycle where the humanoid GameObject stands still. The Animation clip in the second track eases-in the Victory_Dance motion and eases-out to return back to the idle cycle
+        public bool visible { get; set; }
+        public bool isInvalid { get; set; }
 
-To successfully override animation on a previous track, th
+        public IRowGUI parent { get; }
+
+        public Rect rect
+        {
+            get { return parent.ToWindowSpace(treeViewRect); }
+        }
+
+        public Rect treeViewRect
+        {
+            get { return m_TreeViewRect; }
+            protected set
+            {
+                m_TreeViewRect = value;
+                if (value.width < 0.0f)
+                    m_TreeViewRect.width = 1.0f;
+            }
+        }
+
+        Rect m_TreeViewRect;
+
+        protected TimelineItemGUI(IRowGUI parent)
+        {
+            this.parent = parent;
+            m_Styles = DirectorStyles.Instance;
+        }
+    }
+}

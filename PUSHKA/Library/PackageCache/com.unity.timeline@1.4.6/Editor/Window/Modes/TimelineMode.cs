@@ -1,40 +1,91 @@
-ion where the running standalone playmode tests from the ui would result in an error.
+using System;
+using UnityEngine;
 
-## [1.0.15] - 2019-06-18
-- Added new `[TestMustExpectAllLogs]` attribute, which automatically does `LogAssert.NoUnexpectedReceived()` at the end of affected tests. See docs for this attribute for more info on usage.
-- Fixed a regression where no tests would be run if multiple filters are specified. E.g. selecting both a whole assembly and an individual test in the ui.
-- Fixed an issue where performing `Run Selected` on a selected assembly would run all assemblies.
-- Introduced the capability to do a split build and run, when running playmode tests on standalone devices.
-- Fixed an error in ConditionalIgnore, if the condition were not set.
+namespace UnityEditor.Timeline
+{
+    enum TimelineModeGUIState
+    {
+        Disabled,
+        Hidden,
+        Enabled
+    }
 
-## [1.0.14] - 2019-05-27
-- Fixed issue preventing scene creation in IPrebuildSetup.Setup callback when running standalone playmode tests.
-- Fixed an issue where test assemblies would sometimes not be ordered alphabetically.
-- Added module references to the package for the required modules: imgui and jsonserialize.
-- Added a ConditionalIgnore attribute to help ignoring tests only under specific conditions.
-- Fixed a typo in the player test window (case 1148671).
+    abstract class TimelineMode
+    {
+        public struct HeaderState
+        {
+            public TimelineModeGUIState breadCrumb;
+            public TimelineModeGUIState sequenceSelector;
+            public TimelineModeGUIState options;
+        }
 
-## [1.0.13] - 2019-05-07
-- Fixed a regression where results from the player would no longer update correctly in the UI (case 1151147).
+        public struct TrackOptionsState
+        {
+            public TimelineModeGUIState newButton;
+            public TimelineModeGUIState editAsAssetButton;
+        }
 
-## [1.0.12] - 2019-04-16
-- Added specific unity release to the package information.
+        public HeaderState headerState { get; protected set; }
+        public TrackOptionsState trackOptionsState { get; protected set; }
+        public TimelineModes mode { get; protected set; }
 
-## [1.0.11] - 2019-04-10
-- Fixed a regression from 1.0.10 where test-started events were triggered multiple times after a domain reload.
+        public abstract bool ShouldShowPlayRange(WindowState state);
+        public abstract bool ShouldShowTimeCursor(WindowState state);
 
-## [1.0.10] - 2019-04-08
-- Fixed an issue where test-started events would not be fired correctly after a test performing a domain reload (case 1141530).
-- The UI should correctly run tests inside a nested class, when that class is selected.
-- All actions should now correctly display a prefix when reporting test result. E.g. "TearDown :".
-- Errors logged with Debug.LogError in TearDowns now append the error, rather than overwriting the existing result (case 1114306).
-- Incorrect implementations of IWrapTestMethod and IWrapSetUpTearDown now gives a meaningful error.
-- Fixed a regression where the Test Framework would run TearDown in a base class before the inheriting class (case 1142553).
-- Fixed a regression introduced in 1.0.9 where tests with the Explicit attribute could no longer be executed.
+        public virtual bool ShouldShowTrackBindings(WindowState state)
+        {
+            return ShouldShowTimeCursor(state);
+        }
 
-## [1.0.9] - 2019-03-27
-- Fixed an issue where a corrupt instance of the test runner window would block for a new being opened.
-- Added the required modules to the list of package requirements.
-- Fixed an issue where errors would happen if the test filter ui was clicked before the ui is done loading.
-- Fix selecting items with duplicate names in test hierarchy of Test Runner window (case 987587).
--
+        public virtual bool ShouldShowTimeArea(WindowState state)
+        {
+            return !state.IsEditingAnEmptyTimeline();
+        }
+
+        public abstract TimelineModeGUIState TrackState(WindowState state);
+        public abstract TimelineModeGUIState ToolbarState(WindowState state);
+
+        public virtual TimelineModeGUIState PreviewState(WindowState state)
+        {
+            return state.ignorePreview ? TimelineModeGUIState.Disabled : TimelineModeGUIState.Enabled;
+        }
+
+        public virtual TimelineModeGUIState EditModeButtonsState(WindowState state)
+        {
+            return TimelineModeGUIState.Enabled;
+        }
+    }
+
+    /// <summary>
+    /// Different mode for Timeline
+    /// </summary>
+    [Flags]
+    public enum TimelineModes
+    {
+        /// <summary>
+        /// A playable director with a valid timeline is selected in editor.
+        /// </summary>
+        Active = 1,
+        /// <summary>
+        /// The timeline is not editable. (the TimelineAsset file is either readonly on disk or locked by source control).
+        /// </summary>
+        ReadOnly = 2,
+        /// <summary>
+        /// The timeline cannot be played or previewed.
+        /// </summary>
+        Inactive = 4,
+        /// <summary>
+        /// Disabled Timeline.
+        /// </summary>
+        Disabled = 8,
+        /// <summary>
+        /// Timeline in AssetEditing mode.
+        /// This mode is enabled when a timeline asset is selected in the project window.
+        /// </summary>
+        AssetEdition = 16,
+        /// <summary>
+        /// The timeline can be edited (either through playable director or selected timeline asset in project window).
+        /// </summary>
+        Default = Active | AssetEdition
+    }
+}

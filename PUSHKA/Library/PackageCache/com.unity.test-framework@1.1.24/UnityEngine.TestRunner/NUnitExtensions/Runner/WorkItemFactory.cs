@@ -1,15 +1,28 @@
-# Unity.Mathematics
+using System.Collections;
+using NUnit.Framework.Interfaces;
+using NUnit.Framework.Internal;
 
-A C# math library providing vector types and math functions with a shader like
-syntax. Used by the Burst compiler to compile C#/IL to highly efficient
-native code.
+namespace UnityEngine.TestRunner.NUnitExtensions.Runner
+{
+    internal abstract class WorkItemFactory
+    {
+        public UnityWorkItem Create(ITest loadedTest, ITestFilter filter)
+        {
+            TestSuite suite = loadedTest as TestSuite;
+            if (suite != null)
+            {
+                return new CompositeWorkItem(suite, filter, this);
+            }
 
-The main goal of this library is to provide a friendly Math API familiar to SIMD and graphic/shaders developers, using the well known `float4`, `float3` types...etc. with all intrinsics functions provided by a static class `math` that can be imported easily into your C# program with `using static Unity.Mathematics.math`.
+            var testMethod = (TestMethod)loadedTest;
+            if (testMethod.Method.ReturnType.Type != typeof(IEnumerator))
+            {
+                return new DefaultTestWorkItem(testMethod, filter);
+            }
 
-In addition to this, the Burst compiler is able to recognize these types and provide the optimized SIMD type for the running CPU on all supported platforms (x64, ARMv7a...etc.)
+            return Create(testMethod, filter, loadedTest);
+        }
 
-NOTICE: The API is a work in progress and we may introduce breaking changes (API and underlying behavior)
-
-## Usage
-
-You can use this library in your Unity game by using the Package Manager and referen
+        protected abstract UnityWorkItem Create(TestMethod method, ITestFilter filter, ITest loadedTest);
+    }
+}

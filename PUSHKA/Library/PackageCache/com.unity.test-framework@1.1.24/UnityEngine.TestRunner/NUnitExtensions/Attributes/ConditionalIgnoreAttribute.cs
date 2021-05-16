@@ -1,76 +1,85 @@
-parents are live.
-        /// </summary>
-        /// <param name="vcam">The camera to test whether it is live</param>
-        /// <param name="dominantChildOnly">If truw, will only return true if this vcam is the dominat live child</param>
-        /// <returns>True if the camera is live (directly or indirectly)
-        /// or part of a blend in progress.</returns>
-        public bool IsLive(ICinemachineCamera vcam, bool dominantChildOnly = false)
-        {
-            if (SoloCamera == vcam)
-                return true;
-            if (mCurrentLiveCameras.Uses(vcam))
-                return true;
+using System.Collections.Generic;
+using NUnit.Framework;
+using NUnit.Framework.Interfaces;
+using NUnit.Framework.Internal;
 
-            ICinemachineCamera parent = vcam.ParentCamera;
-            while (parent != null && parent.IsLiveChild(vcam, dominantChildOnly))
-            {
-                if (SoloCamera == parent || mCurrentLiveCameras.Uses(parent))
-                    return true;
-                vcam = parent;
-                parent = vcam.ParentCamera;
-            }
-            return false;
+namespace UnityEngine.TestTools
+{
+    /// <summary>
+    /// This attribute is an alternative to the standard `Ignore` attribute in [NUnit](https://nunit.org/). It allows for ignoring tests only under a specified condition. The condition evaluates during `OnLoad`, referenced by ID.
+    /// </summary>
+    public class ConditionalIgnoreAttribute : NUnitAttribute, IApplyToTest
+    {
+        string m_ConditionKey;
+        string m_IgnoreReason;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ConditionalIgnoreAttribute"/> class with a condition key.
+        /// </summary>
+        /// <param name="conditionKey">The key to check for enabling the conditional ignore. The condition is set with the static <see cref="AddConditionalIgnoreMapping"/> method.</param>
+        /// <param name="ignoreReason">The reason for the ignore.</param>
+        public ConditionalIgnoreAttribute(string conditionKey, string ignoreReason)
+        {
+            m_ConditionKey = conditionKey;
+            m_IgnoreReason = ignoreReason;
         }
 
         /// <summary>
-        /// The current state applied to the unity camera (may be the result of a blend)
+        /// Modifies a test as defined for the specific attribute.
         /// </summary>
-        public CameraState CurrentCameraState { get; private set; }
-
-        /// <summary>
-        /// Get the highest-priority Enabled ICinemachineCamera
-        /// that is visible to my camera.  Culling Mask is used to test visibility.
-        /// </summary>
-        private ICinemachineCamera TopCameraFromPriorityQueue()
+        /// <param name="test">The test to modify</param>
+        public void ApplyToTest(Test test)
         {
-            CinemachineCore core = CinemachineCore.Instance;
-            Camera outputCamera = OutputCamera;
-            int mask = outputCamera == null ? ~0 : outputCamera.cullingMask;
-            int numCameras = core.VirtualCameraCount;
-            for (int i = 0; i < numCameras; ++i)
+            var key = m_ConditionKey.ToLowerInvariant();
+            if (m_ConditionMap.ContainsKey(key) && m_ConditionMap[key])
             {
-                var cam = core.GetVirtualCamera(i);
-                GameObject go = cam != null ? cam.gameObject : null;
-                if (go != null && (mask & (1 << go.layer)) != 0)
-                    return cam;
+                test.RunState = RunState.Ignored;
+                string skipReason = string.Format(m_IgnoreReason);
+                test.Properties.Add(PropertyNames.SkipReason, skipReason);
             }
-            return null;
         }
 
-        /// <summary>
-        /// Create a blend curve for blending from one ICinemachineCamera to another.
-        /// If there is a specific blend defined for these cameras it will be used, otherwise
-        /// a default blend will be created, which could be a cut.
-        /// </summary>
-        private CinemachineBlendDefinition LookupBlend(
-            ICinemachineCamera fromKey, ICinemachineCamera toKey)
-        {
-            // Get the blend curve that's most appropriate for these cameras
-            CinemachineBlendDefinition blend = m_DefaultBlend;
-            if (m_CustomBlends != null)
-            {
-                string fromCameraName = (fromKey != null) ? fromKey.Name : string.Empty;
-                string toCameraName = (toKey != null) ? toKey.Name : string.Empty;
-                blend = m_CustomBlends.GetBlendForVirtualCameras(
-                        fromCameraName, toCameraName, blend);
-            }
-            if (CinemachineCore.GetBlendOverride != null)
-                blend = CinemachineCore.GetBlendOverride(fromKey, toKey, blend, this);
-            return blend;
-        }
+        static Dictionary<string, bool> m_ConditionMap = new Dictionary<string, bool>();
 
-        /// <summary> Apply a cref="CameraState"/> to the game object</summary>
-        private void PushStateToUnityCamera(CameraState state)
+        /// <summary>
+        /// Adds a flag indicating whether tests with the same key should be ignored.
+        /// </summary>
+        /// <param name="key">The key to ignore tests for.</param>
+        /// <param name="value">A boolean value indicating whether the tests should be ignored.</param>
+        /// <example>
+        /// An example in which tests are ignored in the Mac editor only.
+        /// <code>
+        /// using UnityEditor;
+        /// using NUnit.Framework;
+        /// using UnityEngine.TestTools;
+        /// 
+        /// [InitializeOnLoad]
+        /// public class OnLoad
+        /// {
+        ///     static OnLoad()
+        ///     {
+        ///         var editorIsOSX = false;
+        ///         #if UNITY_EDITOR_OSX
+        ///         editorIsOSX = true;
+        ///         #endif
+        /// 
+        ///         ConditionalIgnoreAttribute.AddConditionalIgnoreMapping("IgnoreInMacEditor", editorIsOSX);
+        ///     }
+        /// }
+        /// 
+        /// public class MyTestClass
+        /// {
+        ///     [Test, ConditionalIgnore("IgnoreInMacEditor", "Ignored on Mac editor.")]
+        ///     public void TestNeverRunningInMacEditor()
+        ///     {
+        ///         Assert.Pass();
+        ///     }
+        /// }
+        /// </code>
+        /// </example>
+        public static void AddConditionalIgnoreMapping(string key, bool value)
         {
-            CurrentCameraState = state;
-            if ((state.BlendHint & CameraState.BlendHintValue.NoPosition) =
+            m_ConditionMap.Add(key.ToLowerInvariant(), value);
+        }
+    }
+}

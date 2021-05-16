@@ -1,222 +1,192 @@
-ull && m_Window.treeView != null)
-                m_Window.treeView.CalculateRowRects();
-        }
+// -----------------------------------------------------------------------
+// <copyright file="Incremental.cs">
+// Original Triangle code by Jonathan Richard Shewchuk, http://www.cs.cmu.edu/~quake/triangle.html
+// Triangle.NET code by Christian Woltering, http://triangle.codeplex.com/
+// </copyright>
+// -----------------------------------------------------------------------
 
-        // Only one track within a 'track' hierarchy can be armed
-        public void ArmForRecord(TrackAsset track)
+namespace UnityEngine.U2D.Animation.TriangleNet
+    .Meshing.Algorithm
+{
+    using System.Collections.Generic;
+    using Animation.TriangleNet.Topology;
+    using Animation.TriangleNet.Geometry;
+
+    /// <summary>
+    /// Builds a delaunay triangulation using the incremental algorithm.
+    /// </summary>
+    internal class Incremental : ITriangulator
+    {
+        Mesh mesh;
+
+        /// <summary>
+        /// Form a Delaunay triangulation by incrementally inserting vertices.
+        /// </summary>
+        /// <returns>Returns the number of edges on the convex hull of the
+        /// triangulation.</returns>
+        public IMesh Triangulate(IList<Vertex> points, Configuration config)
         {
-            m_ArmedTracks[TimelineUtility.GetSceneReferenceTrack(track)] = track;
-            if (track != null && !recording)
-                recording = true;
-            if (!recording)
-                return;
+            this.mesh = new Mesh(config);
+            this.mesh.TransferNodes(points);
 
-            track.OnRecordingArmed(editSequence.director);
-            CalculateRowRects();
-        }
+            Otri starttri = new Otri();
 
-        public void UnarmForRecord(TrackAsset track)
-        {
-            m_ArmedTracks.Remove(TimelineUtility.GetSceneReferenceTrack(track));
-            if (m_ArmedTracks.Count == 0)
-                recording = false;
-            track.OnRecordingUnarmed(editSequence.director);
-        }
+            // Create a triangular bounding box.
+            GetBoundingBox();
 
-        public void UpdateRecordingState()
-        {
-            if (recording)
+            foreach (var v in mesh.vertices.Values)
             {
-                foreach (var track in m_ArmedTracks.Values)
+                starttri.tri = mesh.dummytri;
+                Osub tmp = default(Osub);
+                if (mesh.InsertVertex(v, ref starttri, ref tmp, false, false) == InsertVertexResult.Duplicate)
                 {
-                    if (track != null)
-                        track.OnRecordingTimeChanged(editSequence.director);
+                    if (Log.Verbose)
+                    {
+                        Log.Instance.Warning("A duplicate vertex appeared and was ignored.",
+                            "Incremental.Triangulate()");
+                    }
+                    v.type = VertexType.UndeadVertex;
+                    mesh.undeads++;
                 }
             }
+
+            // Remove the bounding box.
+            this.mesh.hullsize = RemoveBox();
+
+            return this.mesh;
         }
 
-        public bool IsTrackRecordable(TrackAsset track)
+        /// <summary>
+        /// Form an "infinite" bounding triangle to insert vertices into.
+        /// </summary>
+        /// <remarks>
+        /// The vertices at "infinity" are assigned finite coordinates, which are
+        /// used by the point location routines, but (mostly) ignored by the
+        /// Delaunay edge flip routines.
+        /// </remarks>
+        void GetBoundingBox()
         {
-            // A track with animated parameters can always be recorded to
-            return IsArmedForRecord(track) || track.HasAnyAnimatableParameters();
-        }
+            Otri inftri = default(Otri); // Handle for the triangular bounding box.
+            Rectangle box = mesh.bounds;
 
-        public bool IsArmedForRecord(TrackAsset track)
-        {
-            return track == GetArmedTrack(track);
-        }
-
-        public TrackAsset GetArmedTrack(TrackAsset track)
-        {
-            TrackAsset outTrack;
-            m_ArmedTracks.TryGetValue(TimelineUtility.GetSceneReferenceTrack(track), out outTrack);
-            return outTrack;
-        }
-
-        void CheckRecordingState()
-        {
-            // checks for deleted tracks, and makes sure the recording state matches
-            if (m_ArmedTracks.Any(t => t.Value == null))
+            // Find the width (or height, whichever is larger) of the triangulation.
+            double width = box.Width;
+            if (box.Height > width)
             {
-                m_ArmedTracks = m_ArmedTracks.Where(t => t.Value != null).ToDictionary(t => t.Key, t => t.Value);
-                if (m_ArmedTracks.Count == 0)
-                    recording = false;
+                width = box.Height;
             }
+            if (width == 0.0)
+            {
+                width = 1.0;
+            }
+            // Create the vertices of the bounding box.
+            mesh.infvertex1 = new Vertex(box.Left - 50.0 * width, box.Bottom - 40.0 * width);
+            mesh.infvertex2 = new Vertex(box.Right + 50.0 * width, box.Bottom - 40.0 * width);
+            mesh.infvertex3 = new Vertex(0.5 * (box.Left + box.Right), box.Top + 60.0 * width);
+
+            // Create the bounding box.
+            mesh.MakeTriangle(ref inftri);
+
+            inftri.SetOrg(mesh.infvertex1);
+            inftri.SetDest(mesh.infvertex2);
+            inftri.SetApex(mesh.infvertex3);
+
+            // Link dummytri to the bounding box so we can always find an
+            // edge to begin searching (point location) from.
+            mesh.dummytri.neighbors[0] = inftri;
         }
 
-        void OnCurrentDirectorWillChange()
+        /// <summary>
+        /// Remove the "infinite" bounding triangle, setting boundary markers as appropriate.
+        /// </summary>
+        /// <returns>Returns the number of edges on the convex hull of the triangulation.</returns>
+        /// <remarks>
+        /// The triangular bounding box has three boundary triangles (one for each
+        /// side of the bounding box), and a bunch of triangles fanning out from
+        /// the three bounding box vertices (one triangle for each edge of the
+        /// convex hull of the inner mesh).  This routine removes these triangles.
+        /// </remarks>
+        int RemoveBox()
         {
-            if (ignorePreview)
-                return;
+            Otri deadtriangle = default(Otri);
+            Otri searchedge = default(Otri);
+            Otri checkedge = default(Otri);
+            Otri nextedge = default(Otri), finaledge = default(Otri), dissolveedge = default(Otri);
+            Vertex markorg;
+            int hullsize;
 
-            SynchronizeViewModelTime(editSequence);
-            Stop();
-            rebuildGraph = true; // needed for asset previews
-        }
+            bool noPoly = !mesh.behavior.Poly;
 
-        public void GatherProperties(PlayableDirector director)
-        {
-            if (director == null || Application.isPlaying)
-                return;
+            // Find a boundary triangle.
+            nextedge.tri = mesh.dummytri;
+            nextedge.orient = 0;
+            nextedge.Sym();
 
-            var asset = director.playableAsset as TimelineAsset;
-            if (asset != null && !asset.editorSettings.scenePreview)
-                return;
-
-            if (!previewMode)
+            // Mark a place to stop.
+            nextedge.Lprev(ref finaledge);
+            nextedge.Lnext();
+            nextedge.Sym();
+            // Find a triangle (on the boundary of the vertex set) that isn't
+            // a bounding box triangle.
+            nextedge.Lprev(ref searchedge);
+            searchedge.Sym();
+            // Check whether nextedge is another boundary triangle
+            // adjacent to the first one.
+            nextedge.Lnext(ref checkedge);
+            checkedge.Sym();
+            if (checkedge.tri.id == Mesh.DUMMY)
             {
-                AnimationMode.StartAnimationMode(previewDriver);
-
-                OnStartPreview(director);
-
-                AnimationPropertyContextualMenu.Instance.SetResponder(new TimelineRecordingContextualResponder(this));
-                if (!previewMode)
-                    return;
-                EnsureWindowTimeConsistency();
+                // Go on to the next triangle.  There are only three boundary
+                // triangles, and this next triangle cannot be the third one,
+                // so it's safe to stop here.
+                searchedge.Lprev();
+                searchedge.Sym();
             }
 
-            if (asset != null)
+            // Find a new boundary edge to search from, as the current search
+            // edge lies on a bounding box triangle and will be deleted.
+            mesh.dummytri.neighbors[0] = searchedge;
+
+            hullsize = -2;
+            while (!nextedge.Equals(finaledge))
             {
-                m_PropertyCollector.Reset();
-                m_PropertyCollector.PushActiveGameObject(null); // avoid overflow on unbound tracks
-                asset.GatherProperties(director, m_PropertyCollector);
-            }
-        }
-
-        void OnStartPreview(PlayableDirector director)
-        {
-            previewedDirectors = TimelineUtility.GetAllDirectorsInHierarchy(director).ToList();
-
-            if (previewedDirectors == null)
-                return;
-
-            m_PreviewedAnimators = TimelineUtility.GetBindingsFromDirectors<Animator>(previewedDirectors).ToList();
-
-            m_PreviewedComponents = new List<IAnimationWindowPreview>();
-            foreach (var animator in m_PreviewedAnimators)
-            {
-                m_PreviewedComponents.AddRange(animator.GetComponents<IAnimationWindowPreview>());
-            }
-            foreach (var previewedComponent in m_PreviewedComponents)
-            {
-                previewedComponent.StartPreview();
-            }
-        }
-
-        void OnStopPreview()
-        {
-            if (m_PreviewedComponents != null)
-            {
-                foreach (var previewComponent in m_PreviewedComponents)
+                hullsize++;
+                nextedge.Lprev(ref dissolveedge);
+                dissolveedge.Sym();
+                // If not using a PSLG, the vertices should be marked now.
+                // (If using a PSLG, markhull() will do the job.)
+                if (noPoly)
                 {
-                    if (previewComponent != null)
+                    // Be careful!  One must check for the case where all the input
+                    // vertices are collinear, and thus all the triangles are part of
+                    // the bounding box.  Otherwise, the setvertexmark() call below
+                    // will cause a bad pointer reference.
+                    if (dissolveedge.tri.id != Mesh.DUMMY)
                     {
-                        previewComponent.StopPreview();
+                        markorg = dissolveedge.Org();
+                        if (markorg.label == 0)
+                        {
+                            markorg.label = 1;
+                        }
                     }
                 }
-                m_PreviewedComponents = null;
-            }
-
-            if (m_PreviewedAnimators != null)
-            {
-                foreach (var previewAnimator in m_PreviewedAnimators)
+                // Disconnect the bounding box triangle from the mesh triangle.
+                dissolveedge.Dissolve(mesh.dummytri);
+                nextedge.Lnext(ref deadtriangle);
+                deadtriangle.Sym(ref nextedge);
+                // Get rid of the bounding box triangle.
+                mesh.TriangleDealloc(deadtriangle.tri);
+                // Do we need to turn the corner?
+                if (nextedge.tri.id == Mesh.DUMMY)
                 {
-                    if (previewAnimator != null)
-                    {
-                        previewAnimator.UnbindAllHandles();
-                    }
-                }
-                m_PreviewedAnimators = null;
-            }
-        }
-
-        internal void ProcessStartFramePendingUpdates()
-        {
-            if (m_OnStartFrameUpdates != null)
-                m_OnStartFrameUpdates.RemoveAll(callback => callback.Invoke(this, Event.current));
-        }
-
-        internal void ProcessEndFramePendingUpdates()
-        {
-            if (m_OnEndFrameUpdates != null)
-                m_OnEndFrameUpdates.RemoveAll(callback => callback.Invoke(this, Event.current));
-        }
-
-        public void AddStartFrameDelegate(PendingUpdateDelegate updateDelegate)
-        {
-            if (m_OnStartFrameUpdates == null)
-                m_OnStartFrameUpdates = new List<PendingUpdateDelegate>();
-            if (m_OnStartFrameUpdates.Contains(updateDelegate))
-                return;
-            m_OnStartFrameUpdates.Add(updateDelegate);
-        }
-
-        public void AddEndFrameDelegate(PendingUpdateDelegate updateDelegate)
-        {
-            if (m_OnEndFrameUpdates == null)
-                m_OnEndFrameUpdates = new List<PendingUpdateDelegate>();
-            if (m_OnEndFrameUpdates.Contains(updateDelegate))
-                return;
-            m_OnEndFrameUpdates.Add(updateDelegate);
-        }
-
-        internal void InvokeWindowOnGuiStarted(Event evt)
-        {
-            if (windowOnGuiStarted != null)
-                windowOnGuiStarted.Invoke(this, evt);
-        }
-
-        internal void InvokeWindowOnGuiFinished(Event evt)
-        {
-            if (windowOnGuiFinished != null)
-                windowOnGuiFinished.Invoke(this, evt);
-        }
-
-        public void UpdateRootPlayableDuration(double duration)
-        {
-            if (editSequence.director != null)
-            {
-                if (editSequence.director.playableGraph.IsValid())
-                {
-                    if (editSequence.director.playableGraph.GetRootPlayableCount() > 0)
-                    {
-                        var rootPlayable = editSequence.director.playableGraph.GetRootPlayable(0);
-                        if (rootPlayable.IsValid())
-                            rootPlayable.SetDuration(duration);
-                    }
+                    // Turn the corner.
+                    dissolveedge.Copy(ref nextedge);
                 }
             }
+
+            mesh.TriangleDealloc(finaledge.tri);
+
+            return hullsize;
         }
-
-        public void InvokeTimeChangeCallback()
-        {
-            if (OnTimeChange != null)
-                OnTimeChange.Invoke();
-        }
-
-        Vector2 ValidatePlayRange(Vector2 range)
-        {
-            if (range == TimelineAssetViewModel.NoPlayRangeSet)
-                return range;
-
-            float minimumPlayRangeTime = 0.01f / Mathf.Max(1.0f, referenceSeque
+    }
+}

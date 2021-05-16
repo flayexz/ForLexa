@@ -1,50 +1,103 @@
-ass BrainFrame
+using System;
+using System.Text.RegularExpressions;
+
+namespace UnityEngine.TestTools.Logging
+{
+    [Serializable]
+    internal class LogMatch
+    {
+        [SerializeField]
+        private bool m_UseRegex;
+        [SerializeField]
+        private string m_Message;
+        [SerializeField]
+        private string m_MessageRegex;
+        [SerializeField]
+        private string m_LogType;
+
+        public string Message
         {
-            public int id;
-            public CinemachineBlend blend = new CinemachineBlend(null, null, null, 0, 0);
-            public bool Active { get { return blend.IsValid; } }
-
-            // Working data - updated every frame
-            public CinemachineBlend workingBlend = new CinemachineBlend(null, null, null, 0, 0);
-            public BlendSourceVirtualCamera workingBlendSource = new BlendSourceVirtualCamera(null);
-
-            // Used by Timeline Preview for overriding the current value of deltaTime
-            public float deltaTimeOverride;
+            get { return m_Message; }
+            set
+            {
+                m_Message = value;
+                m_UseRegex = false;
+            }
         }
 
-        // Current game state is always frame 0, overrides are subsequent frames
-        private List<BrainFrame> mFrameStack = new List<BrainFrame>();
-        private int mNextFrameId = 1;
-
-        /// Get the frame index corresponding to the ID
-        private int GetBrainFrame(int withId)
+        public Regex MessageRegex
         {
-            int count = mFrameStack.Count;
-            for (int i = mFrameStack.Count - 1; i > 0; --i)
-                if (mFrameStack[i].id == withId)
-                    return i;
-            // Not found - add it
-            mFrameStack.Add(new BrainFrame() { id = withId });
-            return mFrameStack.Count - 1;
+            get
+            {
+                if (!m_UseRegex)
+                {
+                    return null;
+                }
+
+                return new Regex(m_MessageRegex);
+            }
+            set
+            {
+                if (value != null)
+                {
+                    m_MessageRegex = value.ToString();
+                    m_UseRegex = true;
+                }
+                else
+                {
+                    m_MessageRegex = null;
+                    m_UseRegex = false;
+                }
+            }
         }
 
-        // Current Brain State - result of all frames.  Blend camB is "current" camera always
-        CinemachineBlend mCurrentLiveCameras = new CinemachineBlend(null, null, null, 0, 0);
-        
-        // To avoid GC memory alloc every frame
-        private static readonly AnimationCurve mDefaultLinearAnimationCurve = AnimationCurve.Linear(0, 0, 1, 1);
-        
-        /// <summary>
-        /// This API is specifically for Timeline.  Do not use it.
-        /// Override the current camera and current blend.  This setting will trump
-        /// any in-game logic that sets virtual camera priorities and Enabled states.
-        /// This is the main API for the timeline.
-        /// </summary>
-        /// <param name="overrideId">Id to represent a specific client.  An internal
-        /// stack is maintained, with the most recent non-empty override taking precenence.
-        /// This id must be > 0.  If you pass -1, a new id will be created, and returned.
-        /// Use that id for subsequent calls.  Don't forget to
-        /// call ReleaseCameraOverride after all overriding is finished, to
-        /// free the OverideStack resources.</param>
-        /// <param name="camA"> The camera to set, corresponding to weight=0</param>
-        /// <param name="camB"> The camera
+        public LogType? LogType
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(m_LogType))
+                {
+                    return Enum.Parse(typeof(LogType), m_LogType) as LogType ? ;
+                }
+
+                return null;
+            }
+            set
+            {
+                if (value != null)
+                {
+                    m_LogType = value.Value.ToString();
+                }
+                else
+                {
+                    m_LogType = null;
+                }
+            }
+        }
+
+        public bool Matches(LogEvent log)
+        {
+            if (LogType != null && LogType != log.LogType)
+            {
+                return false;
+            }
+
+            if (m_UseRegex)
+            {
+                return MessageRegex.IsMatch(log.Message);
+            }
+            else
+            {
+                return Message.Equals(log.Message);
+            }
+        }
+
+        public override string ToString()
+        {
+            if (m_UseRegex)
+                return string.Format("[{0}] Regex: {1}", LogType, MessageRegex);
+            else
+                return string.Format("[{0}] {1}", LogType, Message);
+        }
+    }
+}

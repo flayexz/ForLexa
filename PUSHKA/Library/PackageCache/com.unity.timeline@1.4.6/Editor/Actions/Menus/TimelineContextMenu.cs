@@ -1,221 +1,425 @@
-1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    tj1 = (double)(cdx * adytail); c = (double)(splitter * cdx); abig = (double)(c - cdx); ahi = c - abig; alo = cdx - ahi; c = (double)(splitter * adytail); abig = (double)(c - adytail); bhi = c - abig; blo = adytail - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 + tj0); bvirt = (double)(_i - ti0); avirt = _i - bvirt; bround = tj0 - bvirt; around = ti0 - avirt; u[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 + tj1); bvirt = (double)(_i - _0); avirt = _i - bvirt; bround = tj1 - bvirt; around = _0 - avirt; u[1] = around + bround; u3 = (double)(_j + _i); bvirt = (double)(u3 - _j); avirt = u3 - bvirt; bround = _i - bvirt; around = _j - avirt; u[2] = around + bround;
-                    u[3] = u3;
-                    negate = -cdy;
-                    ti1 = (double)(adxtail * negate); c = (double)(splitter * adxtail); abig = (double)(c - adxtail); ahi = c - abig; alo = adxtail - ahi; c = (double)(splitter * negate); abig = (double)(c - negate); bhi = c - abig; blo = negate - bhi; err1 = ti1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    negate = -cdytail;
-                    tj1 = (double)(adx * negate); c = (double)(splitter * adx); abig = (double)(c - adx); ahi = c - abig; alo = adx - ahi; c = (double)(splitter * negate); abig = (double)(c - negate); bhi = c - abig; blo = negate - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 + tj0); bvirt = (double)(_i - ti0); avirt = _i - bvirt; bround = tj0 - bvirt; around = ti0 - avirt; v[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 + tj1); bvirt = (double)(_i - _0); avirt = _i - bvirt; bround = tj1 - bvirt; around = _0 - avirt; v[1] = around + bround; v3 = (double)(_j + _i); bvirt = (double)(v3 - _j); avirt = v3 - bvirt; bround = _i - bvirt; around = _j - avirt; v[2] = around + bround;
-                    v[3] = v3;
-                    catlen = FastExpansionSumZeroElim(4, u, 4, v, cat);
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor.Timeline.Actions;
+using UnityEngine;
+using UnityEngine.Playables;
+using UnityEngine.Timeline;
+using Object = UnityEngine.Object;
 
-                    ti1 = (double)(cdxtail * adytail); c = (double)(splitter * cdxtail); abig = (double)(c - cdxtail); ahi = c - abig; alo = cdxtail - ahi; c = (double)(splitter * adytail); abig = (double)(c - adytail); bhi = c - abig; blo = adytail - bhi; err1 = ti1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    tj1 = (double)(adxtail * cdytail); c = (double)(splitter * adxtail); abig = (double)(c - adxtail); ahi = c - abig; alo = adxtail - ahi; c = (double)(splitter * cdytail); abig = (double)(c - cdytail); bhi = c - abig; blo = cdytail - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 - tj0); bvirt = (double)(ti0 - _i); avirt = _i + bvirt; bround = bvirt - tj0; around = ti0 - avirt; catt[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 - tj1); bvirt = (double)(_0 - _i); avirt = _i + bvirt; bround = bvirt - tj1; around = _0 - avirt; catt[1] = around + bround; catt3 = (double)(_j + _i); bvirt = (double)(catt3 - _j); avirt = catt3 - bvirt; bround = _i - bvirt; around = _j - avirt; catt[2] = around + bround;
-                    catt[3] = catt3;
-                    cattlen = 4;
-                }
-                else
-                {
-                    cat[0] = 0.0;
-                    catlen = 1;
-                    catt[0] = 0.0;
-                    cattlen = 1;
-                }
+namespace UnityEditor.Timeline
+{
+    static class SequencerContextMenu
+    {
+        static class Styles
+        {
+            public static readonly string addItemFromAssetTemplate       = L10n.Tr("Add {0} From {1}");
+            public static readonly string addSingleItemFromAssetTemplate = L10n.Tr("Add From {1}");
+            public static readonly string addItemTemplate                = L10n.Tr("Add {0}");
+            public static readonly string typeSelectorTemplate           = L10n.Tr("Select {0}");
+            public static readonly string trackGroup                     = L10n.Tr("Track Group");
+            public static readonly string trackSubGroup                  = L10n.Tr("Track Sub-Group");
+            public static readonly string addTrackLayer                  = L10n.Tr("Add Layer");
+            public static readonly string layerName                      = L10n.Tr("Layer {0}");
+        }
 
-                if (bdxtail != 0.0)
-                {
-                    temp16alen = ScaleExpansionZeroElim(bxtcalen, bxtca, bdxtail, temp16a);
-                    bxtcatlen = ScaleExpansionZeroElim(catlen, cat, bdxtail, bxtcat);
-                    temp32alen = ScaleExpansionZeroElim(bxtcatlen, bxtcat, 2.0 * bdx, temp32a);
-                    temp48len = FastExpansionSumZeroElim(temp16alen, temp16a, temp32alen, temp32a, temp48);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp48len, temp48, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
-                    if (cdytail != 0.0)
-                    {
-                        temp8len = ScaleExpansionZeroElim(4, aa, bdxtail, temp8);
-                        temp16alen = ScaleExpansionZeroElim(temp8len, temp8, cdytail, temp16a);
-                        finlength = FastExpansionSumZeroElim(finlength, finnow, temp16alen, temp16a, finother);
-                        finswap = finnow; finnow = finother; finother = finswap;
-                    }
-                    if (adytail != 0.0)
-                    {
-                        temp8len = ScaleExpansionZeroElim(4, cc, -bdxtail, temp8);
-                        temp16alen = ScaleExpansionZeroElim(temp8len, temp8, adytail, temp16a);
-                        finlength = FastExpansionSumZeroElim(finlength, finnow, temp16alen, temp16a, finother);
-                        finswap = finnow; finnow = finother; finother = finswap;
-                    }
+        public static void ShowMarkerHeaderContextMenu(Vector2? mousePosition, WindowState state)
+        {
+            var menu = new GenericMenu();
+            List<MenuActionItem> items = new List<MenuActionItem>(100);
+            BuildMarkerHeaderContextMenu(items, mousePosition, state);
+            ActionManager.BuildMenu(menu, items);
+            menu.ShowAsContext();
+        }
 
-                    temp32alen = ScaleExpansionZeroElim(bxtcatlen, bxtcat, bdxtail, temp32a);
-                    bxtcattlen = ScaleExpansionZeroElim(cattlen, catt, bdxtail, bxtcatt);
-                    temp16alen = ScaleExpansionZeroElim(bxtcattlen, bxtcatt, 2.0 * bdx, temp16a);
-                    temp16blen = ScaleExpansionZeroElim(bxtcattlen, bxtcatt, bdxtail, temp16b);
-                    temp32blen = FastExpansionSumZeroElim(temp16alen, temp16a, temp16blen, temp16b, temp32b);
-                    temp64len = FastExpansionSumZeroElim(temp32alen, temp32a, temp32blen, temp32b, temp64);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp64len, temp64, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
-                }
-                if (bdytail != 0.0)
-                {
-                    temp16alen = ScaleExpansionZeroElim(bytcalen, bytca, bdytail, temp16a);
-                    bytcatlen = ScaleExpansionZeroElim(catlen, cat, bdytail, bytcat);
-                    temp32alen = ScaleExpansionZeroElim(bytcatlen, bytcat, 2.0 * bdy, temp32a);
-                    temp48len = FastExpansionSumZeroElim(temp16alen, temp16a, temp32alen, temp32a, temp48);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp48len, temp48, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
+        public static void ShowNewTracksContextMenu(ICollection<TrackAsset> tracks, WindowState state)
+        {
+            var menu = new GenericMenu();
+            List<MenuActionItem> items = new List<MenuActionItem>(100);
+            BuildNewTracksContextMenu(items, tracks, state);
+            ActionManager.BuildMenu(menu, items);
+            menu.ShowAsContext();
+        }
 
-                    temp32alen = ScaleExpansionZeroElim(bytcatlen, bytcat, bdytail, temp32a);
-                    bytcattlen = ScaleExpansionZeroElim(cattlen, catt, bdytail, bytcatt);
-                    temp16alen = ScaleExpansionZeroElim(bytcattlen, bytcatt, 2.0 * bdy, temp16a);
-                    temp16blen = ScaleExpansionZeroElim(bytcattlen, bytcatt, bdytail, temp16b);
-                    temp32blen = FastExpansionSumZeroElim(temp16alen, temp16a, temp16blen, temp16b, temp32b);
-                    temp64len = FastExpansionSumZeroElim(temp32alen, temp32a, temp32blen, temp32b, temp64);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp64len, temp64, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
-                }
-            }
-            if ((cdxtail != 0.0) || (cdytail != 0.0))
+        public static void ShowNewTracksContextMenu(ICollection<TrackAsset> tracks, WindowState state, Rect rect)
+        {
+            var menu = new GenericMenu();
+            List<MenuActionItem> items = new List<MenuActionItem>(100);
+            BuildNewTracksContextMenu(items, tracks, state);
+            ActionManager.BuildMenu(menu, items);
+            menu.DropDown(rect);
+        }
+
+        public static void ShowTrackContextMenu(Vector2? mousePosition)
+        {
+            var items = new List<MenuActionItem>();
+            var menu = new GenericMenu();
+            BuildTrackContextMenu(items, mousePosition);
+            ActionManager.BuildMenu(menu, items);
+            menu.ShowAsContext();
+        }
+
+        public static void ShowItemContextMenu(Vector2 mousePosition)
+        {
+            var menu = new GenericMenu();
+            var items = new List<MenuActionItem>();
+            BuildItemContextMenu(items, mousePosition);
+            ActionManager.BuildMenu(menu, items);
+            menu.ShowAsContext();
+        }
+
+        public static void BuildItemContextMenu(List<MenuActionItem> items, Vector2 mousePosition)
+        {
+            ActionManager.GetMenuEntries(ActionManager.TimelineActions, mousePosition, items);
+            ActionManager.GetMenuEntries(ActionManager.ClipActions, items);
+            ActionManager.GetMenuEntries(ActionManager.MarkerActions, items);
+
+            var clips = TimelineEditor.selectedClips;
+            if (clips.Length > 0)
+                AddMarkerMenuCommands(items, clips.Select(c => c.parentTrack).Distinct().ToList(), TimelineHelpers.GetCandidateTime(mousePosition));
+        }
+
+        public static void BuildNewTracksContextMenu(List<MenuActionItem> menuItems, ICollection<TrackAsset> parentTracks, WindowState state, string format = null)
+        {
+            if (parentTracks == null)
+                parentTracks = new TrackAsset[0];
+
+            if (string.IsNullOrEmpty(format))
+                format = "{0}";
+
+            // Add Group or SubGroup
+            var title = string.Format(format, parentTracks.Any(t => t != null) ? Styles.trackSubGroup : Styles.trackGroup);
+            var menuState = ActionValidity.Valid;
+            if (state.editSequence.isReadOnly)
+                menuState = ActionValidity.Invalid;
+            if (parentTracks.Any() && parentTracks.Any(t => t != null && t.lockedInHierarchy))
+                menuState = ActionValidity.Invalid;
+
+            GenericMenu.MenuFunction command = () =>
             {
-                if ((adxtail != 0.0) || (adytail != 0.0)
-                    || (bdxtail != 0.0) || (bdytail != 0.0))
-                {
-                    ti1 = (double)(adxtail * bdy); c = (double)(splitter * adxtail); abig = (double)(c - adxtail); ahi = c - abig; alo = adxtail - ahi; c = (double)(splitter * bdy); abig = (double)(c - bdy); bhi = c - abig; blo = bdy - bhi; err1 = ti1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    tj1 = (double)(adx * bdytail); c = (double)(splitter * adx); abig = (double)(c - adx); ahi = c - abig; alo = adx - ahi; c = (double)(splitter * bdytail); abig = (double)(c - bdytail); bhi = c - abig; blo = bdytail - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 + tj0); bvirt = (double)(_i - ti0); avirt = _i - bvirt; bround = tj0 - bvirt; around = ti0 - avirt; u[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 + tj1); bvirt = (double)(_i - _0); avirt = _i - bvirt; bround = tj1 - bvirt; around = _0 - avirt; u[1] = around + bround; u3 = (double)(_j + _i); bvirt = (double)(u3 - _j); avirt = u3 - bvirt; bround = _i - bvirt; around = _j - avirt; u[2] = around + bround;
-                    u[3] = u3;
-                    negate = -ady;
-                    ti1 = (double)(bdxtail * negate); c = (double)(splitter * bdxtail); abig = (double)(c - bdxtail); ahi = c - abig; alo = bdxtail - ahi; c = (double)(splitter * negate); abig = (double)(c - negate); bhi = c - abig; blo = negate - bhi; err1 = ti1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    negate = -adytail;
-                    tj1 = (double)(bdx * negate); c = (double)(splitter * bdx); abig = (double)(c - bdx); ahi = c - abig; alo = bdx - ahi; c = (double)(splitter * negate); abig = (double)(c - negate); bhi = c - abig; blo = negate - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 + tj0); bvirt = (double)(_i - ti0); avirt = _i - bvirt; bround = tj0 - bvirt; around = ti0 - avirt; v[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 + tj1); bvirt = (double)(_i - _0); avirt = _i - bvirt; bround = tj1 - bvirt; around = _0 - avirt; v[1] = around + bround; v3 = (double)(_j + _i); bvirt = (double)(v3 - _j); avirt = v3 - bvirt; bround = _i - bvirt; around = _j - avirt; v[2] = around + bround;
-                    v[3] = v3;
-                    abtlen = FastExpansionSumZeroElim(4, u, 4, v, abt);
+                SelectionManager.Clear();
+                if (parentTracks.Count == 0)
+                    Selection.Add(TimelineHelpers.CreateTrack<GroupTrack>(null, title));
 
-                    ti1 = (double)(adxtail * bdytail); c = (double)(splitter * adxtail); abig = (double)(c - adxtail); ahi = c - abig; alo = adxtail - ahi; c = (double)(splitter * bdytail); abig = (double)(c - bdytail); bhi = c - abig; blo = bdytail - bhi; err1 = ti1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); ti0 = (alo * blo) - err3;
-                    tj1 = (double)(bdxtail * adytail); c = (double)(splitter * bdxtail); abig = (double)(c - bdxtail); ahi = c - abig; alo = bdxtail - ahi; c = (double)(splitter * adytail); abig = (double)(c - adytail); bhi = c - abig; blo = adytail - bhi; err1 = tj1 - (ahi * bhi); err2 = err1 - (alo * bhi); err3 = err2 - (ahi * blo); tj0 = (alo * blo) - err3;
-                    _i = (double)(ti0 - tj0); bvirt = (double)(ti0 - _i); avirt = _i + bvirt; bround = bvirt - tj0; around = ti0 - avirt; abtt[0] = around + bround; _j = (double)(ti1 + _i); bvirt = (double)(_j - ti1); avirt = _j - bvirt; bround = _i - bvirt; around = ti1 - avirt; _0 = around + bround; _i = (double)(_0 - tj1); bvirt = (double)(_0 - _i); avirt = _i + bvirt; bround = bvirt - tj1; around = _0 - avirt; abtt[1] = around + bround; abtt3 = (double)(_j + _i); bvirt = (double)(abtt3 - _j); avirt = abtt3 - bvirt; bround = _i - bvirt; around = _j - avirt; abtt[2] = around + bround;
-                    abtt[3] = abtt3;
-                    abttlen = 4;
+                foreach (var parentTrack in parentTracks)
+                    Selection.Add(TimelineHelpers.CreateTrack<GroupTrack>(parentTrack, title));
+
+                TimelineEditor.Refresh(RefreshReason.ContentsAddedOrRemoved);
+            };
+
+            menuItems.Add(
+                new MenuActionItem()
+                {
+                    category = string.Empty,
+                    entryName = title,
+                    isActiveInMode = true,
+                    priority = MenuPriority.AddItem.addGroup,
+                    state = menuState,
+                    isChecked = false,
+                    callback = command
+                }
+            );
+
+
+            var allTypes = TypeUtility.AllTrackTypes().Where(x => x != typeof(GroupTrack) && !TypeUtility.IsHiddenInMenu(x)).ToList();
+
+            int builtInPriority = MenuPriority.AddItem.addTrack;
+            int customPriority = MenuPriority.AddItem.addCustomTrack;
+            foreach (var trackType in allTypes)
+            {
+                var trackItemType = trackType;
+
+                command = () =>
+                {
+                    SelectionManager.Clear();
+
+                    if (parentTracks.Count == 0)
+                        SelectionManager.Add(TimelineHelpers.CreateTrack((Type)trackItemType, null));
+
+                    foreach (var parentTrack in parentTracks)
+                        SelectionManager.Add(TimelineHelpers.CreateTrack((Type)trackItemType, parentTrack));
+                };
+
+                menuItems.Add(
+                    new MenuActionItem()
+                    {
+                        category = TimelineHelpers.GetTrackCategoryName(trackType),
+                        entryName = string.Format(format, TimelineHelpers.GetTrackMenuName(trackItemType)),
+                        isActiveInMode = true,
+                        priority = TypeUtility.IsBuiltIn(trackType) ? builtInPriority++ : customPriority++,
+                        state = menuState,
+                        callback = command
+                    }
+                );
+            }
+        }
+
+        public static void BuildMarkerHeaderContextMenu(List<MenuActionItem> menu, Vector2? mousePosition, WindowState state)
+        {
+            ActionManager.GetMenuEntries(ActionManager.TimelineActions, null, menu, MenuFilter.MarkerHeader);
+
+            var timeline = state.editSequence.asset;
+            var time = TimelineHelpers.GetCandidateTime(mousePosition);
+            var enabled = timeline.markerTrack == null || !timeline.markerTrack.lockedInHierarchy;
+
+            var addMarkerCommand = new Action<Type, Object>
+                (
+                (type, obj) => AddSingleMarkerCallback(type, time, timeline, state.editSequence.director, obj)
+                );
+
+            AddMarkerMenuCommands(menu, new TrackAsset[] {timeline.markerTrack}, addMarkerCommand, enabled);
+        }
+
+        public static void BuildTrackContextMenu(List<MenuActionItem> items, Vector2? mousePosition)
+        {
+            var tracks = SelectionManager.SelectedTracks().ToArray();
+            if (tracks.Length == 0)
+                return;
+
+            ActionManager.GetMenuEntries(ActionManager.TimelineActions, mousePosition, items);
+            ActionManager.GetMenuEntries(ActionManager.TrackActions, items);
+            AddLayeredTrackCommands(items, tracks);
+
+            var first = tracks.First().GetType();
+            var allTheSame = tracks.All(t => t.GetType() == first);
+            if (allTheSame)
+            {
+                if (first != typeof(GroupTrack))
+                {
+                    var candidateTime = TimelineHelpers.GetCandidateTime(mousePosition, tracks);
+                    AddClipMenuCommands(items, tracks, candidateTime);
+                    AddMarkerMenuCommands(items, tracks, candidateTime);
                 }
                 else
                 {
-                    abt[0] = 0.0;
-                    abtlen = 1;
-                    abtt[0] = 0.0;
-                    abttlen = 1;
+                    BuildNewTracksContextMenu(items, tracks, TimelineWindow.instance.state, Styles.addItemTemplate);
                 }
+            }
+        }
 
-                if (cdxtail != 0.0)
+        static void AddLayeredTrackCommands(List<MenuActionItem> menuItems, ICollection<TrackAsset> tracks)
+        {
+            if (tracks.Count == 0)
+                return;
+
+            var layeredType = tracks.First().GetType();
+            // animation tracks have a special menu.
+            if (layeredType == typeof(AnimationTrack))
+                return;
+
+            // must implement ILayerable
+            if (!typeof(UnityEngine.Timeline.ILayerable).IsAssignableFrom(layeredType))
+                return;
+
+            if (tracks.Any(t => t.GetType() != layeredType))
+                return;
+
+            // only supported on the master track no nesting.
+            if (tracks.Any(t => t.isSubTrack))
+                return;
+
+            var enabled = tracks.All(t => t != null && !t.lockedInHierarchy) && !TimelineWindow.instance.state.editSequence.isReadOnly;
+            int priority = MenuPriority.AddTrackMenu.addLayerTrack;
+            GenericMenu.MenuFunction menuCallback = () =>
+            {
+                foreach (var track in tracks)
+                    TimelineHelpers.CreateTrack(layeredType, track, string.Format(Styles.layerName, track.GetChildTracks().Count() + 1));
+            };
+
+            var entryName = Styles.addTrackLayer;
+            menuItems.Add(
+                new MenuActionItem()
                 {
-                    temp16alen = ScaleExpansionZeroElim(cxtablen, cxtab, cdxtail, temp16a);
-                    cxtabtlen = ScaleExpansionZeroElim(abtlen, abt, cdxtail, cxtabt);
-                    temp32alen = ScaleExpansionZeroElim(cxtabtlen, cxtabt, 2.0 * cdx, temp32a);
-                    temp48len = FastExpansionSumZeroElim(temp16alen, temp16a, temp32alen, temp32a, temp48);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp48len, temp48, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
-                    if (adytail != 0.0)
-                    {
-                        temp8len = ScaleExpansionZeroElim(4, bb, cdxtail, temp8);
-                        temp16alen = ScaleExpansionZeroElim(temp8len, temp8, adytail, temp16a);
-                        finlength = FastExpansionSumZeroElim(finlength, finnow, temp16alen, temp16a, finother);
-                        finswap = finnow; finnow = finother; finother = finswap;
-                    }
-                    if (bdytail != 0.0)
-                    {
-                        temp8len = ScaleExpansionZeroElim(4, aa, -cdxtail, temp8);
-                        temp16alen = ScaleExpansionZeroElim(temp8len, temp8, bdytail, temp16a);
-                        finlength = FastExpansionSumZeroElim(finlength, finnow, temp16alen, temp16a, finother);
-                        finswap = finnow; finnow = finother; finother = finswap;
-                    }
-
-                    temp32alen = ScaleExpansionZeroElim(cxtabtlen, cxtabt, cdxtail, temp32a);
-                    cxtabttlen = ScaleExpansionZeroElim(abttlen, abtt, cdxtail, cxtabtt);
-                    temp16alen = ScaleExpansionZeroElim(cxtabttlen, cxtabtt, 2.0 * cdx, temp16a);
-                    temp16blen = ScaleExpansionZeroElim(cxtabttlen, cxtabtt, cdxtail, temp16b);
-                    temp32blen = FastExpansionSumZeroElim(temp16alen, temp16a, temp16blen, temp16b, temp32b);
-                    temp64len = FastExpansionSumZeroElim(temp32alen, temp32a, temp32blen, temp32b, temp64);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp64len, temp64, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
+                    category = string.Empty,
+                    entryName = entryName,
+                    isActiveInMode = true,
+                    priority = priority++,
+                    state = enabled ? ActionValidity.Valid : ActionValidity.Invalid,
+                    callback = menuCallback
                 }
-                if (cdytail != 0.0)
+            );
+        }
+
+        static void AddClipMenuCommands(List<MenuActionItem> menuItems, ICollection<TrackAsset> tracks, double candidateTime)
+        {
+            if (!tracks.Any())
+                return;
+
+            var trackAsset = tracks.First();
+            var trackType = trackAsset.GetType();
+            if (tracks.Any(t => t.GetType() != trackType))
+                return;
+
+            var enabled = tracks.All(t => t != null && !t.lockedInHierarchy) && !TimelineWindow.instance.state.editSequence.isReadOnly;
+            var assetTypes = TypeUtility.GetPlayableAssetsHandledByTrack(trackType);
+            var visibleAssetTypes = TypeUtility.GetVisiblePlayableAssetsHandledByTrack(trackType);
+
+            // skips the name if there is only a single type
+            var commandNameTemplate = assetTypes.Count() == 1 ? Styles.addSingleItemFromAssetTemplate : Styles.addItemFromAssetTemplate;
+            int builtInPriority = MenuPriority.AddItem.addClip;
+            int customPriority = MenuPriority.AddItem.addCustomClip;
+            foreach (var assetType in assetTypes)
+            {
+                var assetItemType = assetType;
+                var category = TimelineHelpers.GetItemCategoryName(assetType);
+                Action<Object> onObjectChanged = obj =>
                 {
-                    temp16alen = ScaleExpansionZeroElim(cytablen, cytab, cdytail, temp16a);
-                    cytabtlen = ScaleExpansionZeroElim(abtlen, abt, cdytail, cytabt);
-                    temp32alen = ScaleExpansionZeroElim(cytabtlen, cytabt, 2.0 * cdy, temp32a);
-                    temp48len = FastExpansionSumZeroElim(temp16alen, temp16a, temp32alen, temp32a, temp48);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp48len, temp48, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
+                    if (obj != null)
+                    {
+                        foreach (var t in tracks)
+                        {
+                            TimelineHelpers.CreateClipOnTrack(assetItemType, obj, t, candidateTime);
+                        }
+                    }
+                };
 
+                foreach (var objectReference in TypeUtility.ObjectReferencesForType(assetType))
+                {
+                    var isSceneReference = objectReference.isSceneReference;
+                    var dataType = objectReference.type;
+                    GenericMenu.MenuFunction menuCallback = () =>
+                    {
+                        ObjectSelector.get.Show(null, dataType, null, isSceneReference, null, (obj) => onObjectChanged(obj), null);
+                        ObjectSelector.get.titleContent = EditorGUIUtility.TrTextContent(string.Format(Styles.typeSelectorTemplate, TypeUtility.GetDisplayName(dataType)));
+                    };
 
-                    temp32alen = ScaleExpansionZeroElim(cytabtlen, cytabt, cdytail, temp32a);
-                    cytabttlen = ScaleExpansionZeroElim(abttlen, abtt, cdytail, cytabtt);
-                    temp16alen = ScaleExpansionZeroElim(cytabttlen, cytabtt, 2.0 * cdy, temp16a);
-                    temp16blen = ScaleExpansionZeroElim(cytabttlen, cytabtt, cdytail, temp16b);
-                    temp32blen = FastExpansionSumZeroElim(temp16alen, temp16a, temp16blen, temp16b, temp32b);
-                    temp64len = FastExpansionSumZeroElim(temp32alen, temp32a, temp32blen, temp32b, temp64);
-                    finlength = FastExpansionSumZeroElim(finlength, finnow, temp64len, temp64, finother);
-                    finswap = finnow; finnow = finother; finother = finswap;
+                    menuItems.Add(
+                        new MenuActionItem()
+                        {
+                            category = category,
+                            entryName = string.Format(commandNameTemplate, TypeUtility.GetDisplayName(assetType), TypeUtility.GetDisplayName(objectReference.type)),
+                            isActiveInMode = true,
+                            priority = TypeUtility.IsBuiltIn(assetType) ? builtInPriority++ : customPriority++,
+                            state = enabled ? ActionValidity.Valid : ActionValidity.Invalid,
+                            callback = menuCallback
+                        }
+                    );
                 }
             }
 
-            return finnow[finlength - 1];
+            foreach (var assetType in visibleAssetTypes)
+            {
+                var assetItemType = assetType;
+                var category = TimelineHelpers.GetItemCategoryName(assetType);
+                var commandName = string.Format(Styles.addItemTemplate, TypeUtility.GetDisplayName(assetType));
+                GenericMenu.MenuFunction command = () =>
+                {
+                    foreach (var t in tracks)
+                    {
+                        TimelineHelpers.CreateClipOnTrack(assetItemType, t, candidateTime);
+                    }
+                };
+
+                menuItems.Add(
+                    new MenuActionItem()
+                    {
+                        category = category,
+                        entryName = commandName,
+                        isActiveInMode = true,
+                        priority = TypeUtility.IsBuiltIn(assetItemType) ? builtInPriority++ : customPriority++,
+                        state = enabled ? ActionValidity.Valid : ActionValidity.Invalid,
+                        callback = command
+                    }
+                );
+            }
         }
 
-        #region Workspace
-
-        // InCircleAdapt workspace:
-        double[] fin1, fin2, abdet;
-
-        double[] axbc, axxbc, aybc, ayybc, adet;
-        double[] bxca, bxxca, byca, byyca, bdet;
-        double[] cxab, cxxab, cyab, cyyab, cdet;
-
-        double[] temp8, temp16a, temp16b, temp16c;
-        double[] temp32a, temp32b, temp48, temp64;
-
-        private void AllocateWorkspace()
+        static void AddMarkerMenuCommands(List<MenuActionItem> menu, IEnumerable<Type> markerTypes, Action<Type, Object> addMarkerCommand, bool enabled)
         {
-            fin1 = new double[1152];
-            fin2 = new double[1152];
-            abdet = new double[64];
+            int builtInPriority = MenuPriority.AddItem.addMarker;
+            int customPriority = MenuPriority.AddItem.addCustomMarker;
+            foreach (var markerType in markerTypes)
+            {
+                var markerItemType = markerType;
+                string category = TimelineHelpers.GetItemCategoryName(markerItemType);
+                menu.Add(
+                    new MenuActionItem()
+                    {
+                        category = category,
+                        entryName = string.Format(Styles.addItemTemplate, TypeUtility.GetDisplayName(markerType)),
+                        isActiveInMode = true,
+                        priority = TypeUtility.IsBuiltIn(markerType) ? builtInPriority++ : customPriority++,
+                        state = enabled ? ActionValidity.Valid : ActionValidity.Invalid,
+                        callback = () => addMarkerCommand(markerItemType, null)
+                    }
+                );
 
-            axbc = new double[8];
-            axxbc = new double[16];
-            aybc = new double[8];
-            ayybc = new double[16];
-            adet = new double[32];
+                foreach (var objectReference in TypeUtility.ObjectReferencesForType(markerType))
+                {
+                    var isSceneReference = objectReference.isSceneReference;
+                    GenericMenu.MenuFunction menuCallback = () =>
+                    {
+                        Type assetDataType = objectReference.type;
+                        ObjectSelector.get.titleContent = EditorGUIUtility.TrTextContent(string.Format(Styles.typeSelectorTemplate, TypeUtility.GetDisplayName(assetDataType)));
+                        ObjectSelector.get.Show(null, assetDataType, null, isSceneReference, null, obj =>
+                        {
+                            if (obj != null)
+                                addMarkerCommand(markerItemType, obj);
+                        }, null);
+                    };
 
-            bxca = new double[8];
-            bxxca = new double[16];
-            byca = new double[8];
-            byyca = new double[16];
-            bdet = new double[32];
-
-            cxab = new double[8];
-            cxxab = new double[16];
-            cyab = new double[8];
-            cyyab = new double[16];
-            cdet = new double[32];
-
-            temp8 = new double[8];
-            temp16a = new double[16];
-            temp16b = new double[16];
-            temp16c = new double[16];
-
-            temp32a = new double[32];
-            temp32b = new double[32];
-            temp48 = new double[48];
-            temp64 = new double[64];
+                    menu.Add(
+                        new MenuActionItem
+                        {
+                            category = TimelineHelpers.GetItemCategoryName(markerItemType),
+                            entryName = string.Format(Styles.addItemFromAssetTemplate, TypeUtility.GetDisplayName(markerType), TypeUtility.GetDisplayName(objectReference.type)),
+                            isActiveInMode = true,
+                            priority = TypeUtility.IsBuiltIn(markerType) ? builtInPriority++ : customPriority++,
+                            state = enabled ? ActionValidity.Valid : ActionValidity.Invalid,
+                            callback = menuCallback
+                        }
+                    );
+                }
+            }
         }
 
-        private void ClearWorkspace()
+        static void AddMarkerMenuCommands(List<MenuActionItem> menuItems, ICollection<TrackAsset> tracks, double candidateTime)
         {
+            if (tracks.Count == 0)
+                return;
+
+            var enabled = tracks.All(t => !t.lockedInHierarchy) && !TimelineWindow.instance.state.editSequence.isReadOnly;
+            var addMarkerCommand = new Action<Type, Object>((type, obj) => AddMarkersCallback(tracks, type, candidateTime, obj));
+
+            AddMarkerMenuCommands(menuItems, tracks, addMarkerCommand, enabled);
         }
 
-        #endregion
+        static void AddMarkerMenuCommands(List<MenuActionItem> menuItems, ICollection<TrackAsset> tracks, Action<Type, Object> command, bool enabled)
+        {
+            var markerTypes = TypeUtility.GetBuiltInMarkerTypes().Union(TypeUtility.GetUserMarkerTypes());
+            if (tracks != null)
+                markerTypes = markerTypes.Where(x => tracks.All(track => (track == null) || TypeUtility.DoesTrackSupportMarkerType(track, x))); // null track indicates marker track to be created
 
-        #endregion
+            AddMarkerMenuCommands(menuItems, markerTypes, command, enabled);
+        }
+
+        static void AddMarkersCallback(ICollection<TrackAsset> targets, Type markerType, double time, Object obj)
+        {
+            SelectionManager.Clear();
+            foreach (var target in targets)
+            {
+                var marker = TimelineHelpers.CreateMarkerOnTrack(markerType, obj, target, time);
+                SelectionManager.Add(marker);
+            }
+            TimelineEditor.Refresh(RefreshReason.ContentsAddedOrRemoved);
+        }
+
+        static void AddSingleMarkerCallback(Type markerType, double time, TimelineAsset timeline, PlayableDirector director, Object assignableObject)
+        {
+            timeline.CreateMarkerTrack();
+            var markerTrack = timeline.markerTrack;
+
+            SelectionManager.Clear();
+            var marker = TimelineHelpers.CreateMarkerOnTrack(markerType, assignableObject, markerTrack, time);
+            SelectionManager.Add(marker);
+
+            if (typeof(INotification).IsAssignableFrom(markerType) && director != null)
+            {
+                if (director != null && director.GetGenericBinding(markerTrack) == null)
+                    director.SetGenericBinding(markerTrack, director.gameObject);
+            }
+
+            TimelineEditor.Refresh(RefreshReason.ContentsAddedOrRemoved);
+        }
     }
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           

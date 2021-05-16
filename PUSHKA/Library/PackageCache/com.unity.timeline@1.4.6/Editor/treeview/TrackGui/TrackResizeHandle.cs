@@ -1,39 +1,29 @@
-using System;
-using Unity.Collections;
 using UnityEngine;
 
-namespace UnityEditor.U2D.PSD
+namespace UnityEditor.Timeline
 {
-    [Serializable]
-    class PSDLayer
+    class TrackResizeHandle : IBounds
     {
-        [SerializeField]
-        string m_Name;
-        [SerializeField]
-        string m_SpriteName;
-        [SerializeField]
-        bool m_IsGroup;
-        [SerializeField]
-        int m_ParentIndex;
-        [SerializeField]
-        string m_SpriteID;
-        [SerializeField]
-        int m_LayerID;
-        [SerializeField]
-        Vector2Int m_MosaicPosition;
+        public Rect boundingRect { get; private set; }
 
-        [NonSerialized]
-        GameObject m_GameObject;
+        public TimelineTrackGUI trackGUI { get; }
 
-        public PSDLayer(NativeArray<Color32> tex, int parent, bool group, string layerName, int width, int height, int id)
+        public TrackResizeHandle(TimelineTrackGUI trackGUI)
         {
-            isGroup = group;
-            parentIndex = parent;
-            texture = tex;
-            name = layerName;
-            this.width = width;
-            this.height = height;
-            layerID = id;
+            this.trackGUI = trackGUI;
         }
 
-        publ
+        public void Draw(Rect headerRect, WindowState state)
+        {
+            const float resizeHandleHeight = WindowConstants.trackResizeHandleHeight;
+            var rect = new Rect(headerRect.xMin, headerRect.yMax - (0.5f * resizeHandleHeight), headerRect.width, resizeHandleHeight);
+            boundingRect = trackGUI.ToWindowSpace(rect);
+
+            var cursorRect = rect;
+            cursorRect.height--;
+            EditorGUIUtility.AddCursorRect(cursorRect, MouseCursor.SplitResizeUpDown);
+            if (Event.current.type == EventType.Repaint)
+                state.headerSpacePartitioner.AddBounds(this);
+        }
+    }
+}

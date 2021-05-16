@@ -1,140 +1,124 @@
-﻿/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-using System;
-using System.IO;
-using System.Linq;
-using Microsoft.Win32;
-using Unity.CodeEditor;
-using IOPath = System.IO.Path;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
 
-namespace Microsoft.Unity.VisualStudio.Editor
+namespace UnityEditor.U2D.Path.GUIFramework
 {
-	internal interface IVisualStudioInstallation
-	{
-		string Path { get; }
-		bool SupportsAnalyzers { get; }
-		Version LatestLanguageVersionSupported { get; }
-		string[] GetAnalyzers();
-		CodeEditor.Installation ToCodeEditorInstallation();
-	}
+    public class GUISystem
+    {
+        private readonly int kControlIDCheckHashCode = "ControlIDCheckHashCode".GetHashCode();
 
-	internal class VisualStudioInstallation : IVisualStudioInstallation
-	{
-		public string Name { get; set; }
-		public string Path { get; set; }
-		public Version Version { get; set; }
-		public bool IsPrerelease { get; set; }
+        private List<Control> m_Controls = new List<Control>();
+        private List<GUIAction> m_Actions = new List<GUIAction>();
+        private IGUIState m_GUIState;
+        private int m_PrevNearestControl = -1;
+        private LayoutData m_PrevNearestLayoutData = LayoutData.zero;
+        private int m_ControlIDCheck = -1;
 
-		public bool SupportsAnalyzers
-		{
-			get
-			{
-				if (VisualStudioEditor.IsWindows)
-					return Version >= new Version(16, 3);
+        public GUISystem(IGUIState guiState)
+        {
+            m_GUIState = guiState;
+        }
 
-				if (VisualStudioEditor.IsOSX)
-					return Version >= new Version(8, 3);
+        public void AddControl(Control control)
+        {
+            if (control == null)
+                throw new NullReferenceException("Control is null");
 
-				return false;
-			}
-		}
+            m_Controls.Add(control);
+        }
 
-		// C# language version support for Visual Studio
-		private static VersionPair[] WindowsVersionTable =
-		{
-			// VisualStudio 2019
-			new VersionPair(16,8, /* => */ 9,0),
-			new VersionPair(16,0, /* => */ 8,0),
-			
-			// VisualStudio 2017
-			new VersionPair(15,7, /* => */ 7,3),
-			new VersionPair(15,5, /* => */ 7,2),
-			new VersionPair(15,3, /* => */ 7,1),
-			new VersionPair(15,0, /* => */ 7,0),
-		};
+        public void RemoveControl(Control control)
+        {
+            m_Controls.Remove(control);
+        }
 
-		// C# language version support for Visual Studio for Mac
-		private static VersionPair[] OSXVersionTable =
-		{
-			// VisualStudio for Mac 8.x
-			new VersionPair(8,8, /* => */ 9,0),
-			new VersionPair(8,3, /* => */ 8,0),
-			new VersionPair(8,0, /* => */ 7,3),
-		};
+        public void AddAction(GUIAction action)
+        {
+            if (action == null)
+                throw new NullReferenceException("Action is null");
 
-		public Version LatestLanguageVersionSupported
-		{
-			get
-			{
-				VersionPair[] versions = null;
+            m_Actions.Add(action);
+        }
 
-				if (VisualStudioEditor.IsWindows)
-					versions = WindowsVersionTable;
+        public void RemoveAction(GUIAction action)
+        {
+            m_Actions.Remove(action);
+        }
 
-				if (VisualStudioEditor.IsOSX)
-					versions = OSXVersionTable;
+        public void OnGUI()
+        {
+            var controlIDCheck = m_GUIState.GetControlID(kControlIDCheckHashCode, FocusType.Passive);
 
-				if (versions != null)
-				{
-					foreach(var entry in versions)
-					{
-						if (Version >= entry.IdeVersion)
-							return entry.LanguageVersion;
-					}
-				}
+            if (m_GUIState.eventType == EventType.Layout)
+                m_ControlIDCheck = controlIDCheck;
+            else if (m_GUIState.eventType != EventType.Used && m_ControlIDCheck != controlIDCheck)
+                Debug.LogWarning("GetControlID at event " + m_GUIState.eventType + " returns a controlID different from the one in Layout event");
+                
+            var nearestLayoutData = LayoutData.zero;
 
-				// default to 7.0 given we support at least VS 2017
-				return new Version(7,0);
-			}
-		}
+            foreach (var control in m_Controls)
+                control.GetControl(m_GUIState);
 
-		private static string ReadRegistry(RegistryKey hive, string keyName, string valueName)
-		{
-			try
-			{
-				var unitykey = hive.OpenSubKey(keyName);
+            if (m_GUIState.eventType == EventType.Layout)
+            {
+                foreach (var control in m_Controls)
+                    control.BeginLayout(m_GUIState);
 
-				var result = (string)unitykey?.GetValue(valueName);
-				return result;
-			}
-			catch (Exception)
-			{
-				return null;
-			}
-		}
+                foreach (var control in m_Controls)
+                {
+                    control.Layout(m_GUIState);
+                    nearestLayoutData = LayoutData.Nearest(nearestLayoutData, control.layoutData);
+                }
 
-		// We only use this to find analyzers, we do not need to load this assembly anymore
-		private string GetBridgeLocation()
-		{
-			if (VisualStudioEditor.IsWindows)
-			{
-				// Registry, using legacy bridge location
-				var keyName = $"Software\\Microsoft\\Microsoft Visual Studio {Version.Major}.0 Tools for Unity";
-				const string valueName = "UnityExtensionPath";
+                foreach (var control in m_Controls)
+                    m_GUIState.AddControl(control.ID, control.layoutData.distance);
 
-				var bridge = ReadRegistry(Registry.CurrentUser, keyName, valueName);
-				if (string.IsNullOrEmpty(bridge))
-					bridge = ReadRegistry(Registry.LocalMachine, keyName, valueName);
+                foreach (var control in m_Controls)
+                    control.EndLayout(m_GUIState);
 
-				return bridge;
-			}
+                if (m_PrevNearestControl == m_GUIState.nearestControl)
+                {
+                    if (nearestLayoutData.index != m_PrevNearestLayoutData.index)
+                        m_GUIState.Repaint();
+                }
+                else
+                {
+                    m_PrevNearestControl = m_GUIState.nearestControl;
+                    m_GUIState.Repaint();
+                }
 
-			if (VisualStudioEditor.IsOSX)
-			{
-				// Environment,  useful when developing UnityVS for Mac 
-				var bridge = Environment.GetEnvironmentVariable("VSTUM_BRIDGE");
-				if (!string.IsNullOrEmpty(bridge) && File.Exists(bridge))
-					return bridge;
+                m_PrevNearestLayoutData = nearestLayoutData;
+            }
 
-				const string addinBridge = "Editor/SyntaxTree.VisualStudio.Unity.Bridge.dll";
-				const string addinName = "MonoDevelop.Unity";
+            if (m_GUIState.eventType == EventType.Repaint)
+            {
+                foreach (var action in m_Actions)
+                    if (action.IsRepaintEnabled(m_GUIState))
+                        action.PreRepaint(m_GUIState);
 
-				// user addins repository
-				var localAddins = IOPath.Combine(
-					Environment.GetFolderPath(Environment.SpecialFolder.Personal),
-					$"Library/Application Support/VisualStudio/${Version.Major}.0" + "/LocalInstall/Addins");
+                foreach (var control in m_Controls)
+                    control.Repaint(m_GUIState);
+            }
 
-				// In the user addins repository, the addins are suffixed by their versions, like `MonoDevelop.Unity.1.0`
-				// When installing another local user ad
+            var repaintOnMouseMove = false;
+
+            foreach (var action in m_Actions)
+            {
+                if (IsMouseMoveEvent())
+                    repaintOnMouseMove |= action.IsRepaintOnMouseMoveEnabled(m_GUIState);
+
+                action.OnGUI(m_GUIState);
+            }
+
+            if (repaintOnMouseMove)
+                m_GUIState.Repaint();
+        }
+
+        private bool IsMouseMoveEvent()
+        {
+            return m_GUIState.eventType == EventType.MouseMove || m_GUIState.eventType == EventType.MouseDrag;
+        }
+    }
+}

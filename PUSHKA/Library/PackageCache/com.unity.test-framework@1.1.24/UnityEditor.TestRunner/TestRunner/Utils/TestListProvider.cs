@@ -1,33 +1,42 @@
-using UnityEngine;
-using Cinemachine.Utility;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework.Interfaces;
+using UnityEngine.TestTools;
+using UnityEngine.TestTools.NUnitExtensions;
 
-namespace Cinemachine
+namespace UnityEditor.TestTools.TestRunner
 {
-    /// <summary>
-    /// This is a CinemachineComponent in the Aim section of the component pipeline.
-    /// Its job is to aim the camera at a target object, with configurable offsets, damping,
-    /// and composition rules.
-    ///
-    /// In addition, if the target is a ICinemachineTargetGroup, the behaviour
-    /// will adjust the FOV and the camera distance to ensure that the entire group of targets
-    /// is framed properly.
-    /// </summary>
-    [DocumentationSorting(DocumentationSortingAttribute.Level.UserRef)]
-    [AddComponentMenu("")] // Don't display in add component menu
-    [SaveDuringPlay]
-    public class CinemachineGroupComposer : CinemachineComposer
+    internal class TestListProvider : ITestListProvider
     {
-        /// <summary>How much of the screen to fill with the bounding box of the targets.</summary>
-        [Space]
-        [Tooltip("The bounding box of the targets should occupy this amount of the screen space.  1 means fill the whole screen.  0.5 means fill half the screen, etc.")]
-        public float m_GroupFramingSize = 0.8f;
+        private readonly EditorLoadedTestAssemblyProvider m_AssemblyProvider;
+        private readonly UnityTestAssemblyBuilder m_AssemblyBuilder;
 
-        /// <summary>What screen dimensions to consider when framing</summary>
-        [DocumentationSorting(DocumentationSortingAttribute.Level.UserRef)]
-        public enum FramingMode
+        public TestListProvider(EditorLoadedTestAssemblyProvider assemblyProvider, UnityTestAssemblyBuilder assemblyBuilder)
         {
-            /// <summary>Consider only the horizontal dimension.  Vertical framing is ignored.</summary>
-            Horizontal,
-            /// <summary>Consider only the vertical dimension.  Horizontal framing is ignored.</summary>
-            Vertical,
-            /// <summary>The larger of the horizontal and vertical dimensions will dominate, 
+            m_AssemblyProvider = assemblyProvider;
+            m_AssemblyBuilder = assemblyBuilder;
+        }
+
+        public IEnumerator<ITest> GetTestListAsync(TestPlatform platform)
+        {
+            var assembliesTask = m_AssemblyProvider.GetAssembliesGroupedByTypeAsync(platform);
+            while (assembliesTask.MoveNext())
+            {
+                yield return null;
+            }
+
+            var assemblies = assembliesTask.Current.Where(pair => platform.IsFlagIncluded(pair.Key))
+                .SelectMany(pair => pair.Value.Select(assemblyInfo => Tuple.Create(assemblyInfo.Assembly, pair.Key))).ToArray();
+
+            var settings = UnityTestAssemblyBuilder.GetNUnitTestBuilderSettings(platform);
+            var test =  m_AssemblyBuilder.BuildAsync(assemblies.Select(a => a.Item1).ToArray(), assemblies.Select(a => a.Item2).ToArray(), settings);
+            while (test.MoveNext())
+            {
+                yield return null;
+            }
+
+            yield return test.Current;
+        }
+    }
+}

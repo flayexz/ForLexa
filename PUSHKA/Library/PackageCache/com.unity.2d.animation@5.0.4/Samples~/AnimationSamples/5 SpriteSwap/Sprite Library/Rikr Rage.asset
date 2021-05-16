@@ -1,49 +1,51 @@
-                       {
-                            continue;
-                        }
-
-                        if (TessUtils.IsInsideCircle(points[a], points[b], points[x], points[y]))
-                        {
-                            stack[stackCount++] = a;
-                            stack[stackCount++] = b;
-                        }
-                    }
-                }
-
-                while (stackCount > 0)
-                {
-                    int b = stack[stackCount - 1];
-                    stackCount--;
-                    int a = stack[stackCount - 1];
-                    stackCount--;
-
-                    int x = -1, y = -1;
-                    TessStar star = m_Stars[a];
-                    for (int i = 1; i < star.pointCount; i += 2)
-                    {
-                        int s = star.points[i - 1];
-                        int t = star.points[i];
-                        if (s == b)
-                        {
-                            y = t;
-                        }
-                        else if (t == b)
-                        {
-                            x = s;
-                        }
-                    }
-
-                    if (x < 0 || y < 0)
-                    {
-                        continue;
-                    }
-
-                    if (!TessUtils.IsInsideCircle(points[a], points[b], points[x], points[y]))
-                    {
-                        continue;
-                    }
-
-                    EdgeFlip(a, b);
-
-                    Flip(points, ref stack, ref stackCount, x, a, y);
-                 
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5bf7c34a0dc4e6348bea04faa70406ee, type: 3}
+  m_Name: Rikr Rage
+  m_EditorClassIdentifier: 
+  m_Labels:
+  - m_Name: Head
+    m_Hash: 130111906
+    m_CategoryList:
+    - m_Name: Head
+      m_Hash: 130111906
+      m_Sprite: {fileID: 21300000, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}
+  - m_Name: Body
+    m_Hash: 2073732236
+    m_CategoryList:
+    - m_Name: Body
+      m_Hash: 2073732236
+      m_Sprite: {fileID: 21300006, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}
+  - m_Name: Arm Right
+    m_Hash: -1619980263
+    m_CategoryList:
+    - m_Name: Arm Right
+      m_Hash: -1619980263
+      m_Sprite: {fileID: 21300010, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}
+  - m_Name: Arm Left
+    m_Hash: 1968732370
+    m_CategoryList:
+    - m_Name: Arm Left
+      m_Hash: 1968732370
+      m_Sprite: {fileID: 21300002, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}
+  - m_Name: Leg Right
+    m_Hash: -1137668046
+    m_CategoryList:
+    - m_Name: Leg Right
+      m_Hash: -1137668046
+      m_Sprite: {fileID: 21300008, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}
+  - m_Name: Leg Left
+    m_Hash: -306189275
+    m_CategoryList:
+    - m_Name: Leg Right
+      m_Hash: -1137668046
+      m_Sprite: {fileID: 21300004, guid: 62aab9d0b7eea6d46a98bc6bfb5f255e, type: 3}

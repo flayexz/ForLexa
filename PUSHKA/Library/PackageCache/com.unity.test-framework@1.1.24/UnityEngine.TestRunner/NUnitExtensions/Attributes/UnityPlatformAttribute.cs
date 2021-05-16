@@ -1,82 +1,82 @@
-#if !UNITY_2019_3_OR_NEWER
-#define CINEMACHINE_PHYSICS
-#define CINEMACHINE_PHYSICS_2D
-#endif
-
-using UnityEngine;
-using System.Collections.Generic;
-using Cinemachine.Utility;
-using UnityEngine.Serialization;
 using System;
-using UnityEngine.SceneManagement;
+using System.Collections.Generic;
+using System.Linq;
+using NUnit.Framework;
+using NUnit.Framework.Interfaces;
+using NUnit.Framework.Internal;
 
-namespace Cinemachine
+namespace UnityEngine.TestTools
 {
-#if CINEMACHINE_PHYSICS
     /// <summary>
-    /// An add-on module for Cinemachine Virtual Camera that post-processes
-    /// the final position of the virtual camera. Based on the supplied settings,
-    /// the Collider will attempt to preserve the line of sight
-    /// with the LookAt target of the virtual camera by moving
-    /// away from objects that will obstruct the view.
-    ///
-    /// Additionally, the Collider can be used to assess the shot quality and
-    /// report this as a field in the camera State.
+    /// Use this attribute to define a specific set of platforms you want or do not want your test(s) to run on.
+    /// 
+    /// You can use this attribute on the test method, test class, or test assembly level. Use the supported <see cref="RuntimePlatform"/> enumeration values to specify the platforms. You can also specify which platforms to test by passing one or more `RuntimePlatform` values along with or without the include or exclude properties as parameters to the [Platform](https://github.com/nunit/docs/wiki/Platform-Attribute) attribute constructor.
+    /// 
+    /// The test(s) skips if the current target platform is:
+    /// - Not explicitly specified in the included platforms list
+    /// - In the excluded platforms list
     /// </summary>
-    [DocumentationSorting(DocumentationSortingAttribute.Level.UserRef)]
-    [AddComponentMenu("")] // Hide in menu
-    [SaveDuringPlay]
-#if UNITY_2018_3_OR_NEWER
-    [ExecuteAlways]
-#else
-    [ExecuteInEditMode]
-#endif
-    [DisallowMultipleComponent]
-    [HelpURL(Documentation.BaseURL + "manual/CinemachineCollider.html")]
-    public class CinemachineCollider : CinemachineExtension
+    [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true, Inherited = false)]
+    public class UnityPlatformAttribute : NUnitAttribute, IApplyToTest
     {
-        /// <summary>Objects on these layers will be detected.</summary>
-        [Header("Obstacle Detection")]
-        [Tooltip("Objects on these layers will be detected")]
-        public LayerMask m_CollideAgainst = 1;
-
-        /// <summary>Obstacles with this tag will be ignored.  It is a good idea to set this field to the target's tag</summary>
-        [TagField]
-        [Tooltip("Obstacles with this tag will be ignored.  It is a good idea to set this field to the target's tag")]
-        public string m_IgnoreTag = string.Empty;
-
-        /// <summary>Objects on these layers will never obstruct view of the target.</summary>
-        [Tooltip("Objects on these layers will never obstruct view of the target")]
-        public LayerMask m_TransparentLayers = 0;
-
-        /// <summary>Obstacles closer to the target than this will be ignored</summary>
-        [Tooltip("Obstacles closer to the target than this will be ignored")]
-        public float m_MinimumDistanceFromTarget = 0.1f;
-
         /// <summary>
-        /// When enabled, will attempt to resolve situations where the line of sight to the
-        /// target is blocked by an obstacle
+        /// A subset of platforms you need to have your tests run on.
         /// </summary>
-        [Space]
-        [Tooltip("When enabled, will attempt to resolve situations where the line of sight to the target is blocked by an obstacle")]
-        [FormerlySerializedAs("m_PreserveLineOfSight")]
-        public bool m_AvoidObstacles = true;
-
+        public RuntimePlatform[] include { get; set; }
         /// <summary>
-        /// The raycast distance to test for when checking if the line of sight to this camera's target is clear.
+        /// List the platforms you do not want to have your tests run on.
         /// </summary>
-        [Tooltip("The maximum raycast distance when checking if the line of sight to this camera's target is clear.  If the setting is 0 or less, the current actual distance to target will be used.")]
-        [FormerlySerializedAs("m_LineOfSightFeelerDistance")]
-        public float m_DistanceLimit = 0f;
+        public RuntimePlatform[] exclude { get; set; }
+
+        private string m_skippedReason;
 
         /// <summary>
-        /// Don't take action unless occlusion has lasted at least this long.
+        /// Constructs a new instance of the <see cref="UnityPlatformAttribute"/> class.
         /// </summary>
-        [Tooltip("Don't take action unless occlusion has lasted at least this long.")]
-        public float m_MinimumOcclusionTime = 0f;
+        public UnityPlatformAttribute()
+        {
+            include = new List<RuntimePlatform>().ToArray();
+            exclude = new List<RuntimePlatform>().ToArray();
+        }
 
         /// <summary>
-        /// Camera will try to maintain this distance from any obstacle.
-        /// Increase this value if you are seeing inside obstacles due to a large
-        /// FOV on the camera.
-        /// </summa
+        /// Constructs a new instance of the <see cref="UnityPlatformAttribute"/> class with a list of platforms to include.
+        /// </summary>
+        /// <param name="include">The different <see cref="RuntimePlatform"/> to run the test on.</param>
+        public UnityPlatformAttribute(params RuntimePlatform[] include)
+            : this()
+        {
+            this.include = include;
+        }
+
+        /// <summary>
+        /// Modifies a test as defined for the specific attribute.
+        /// </summary>
+        /// <param name="test">The test to modify</param>
+        public void ApplyToTest(Test test)
+        {
+            if (test.RunState == RunState.NotRunnable || test.RunState == RunState.Ignored || IsPlatformSupported(Application.platform))
+            {
+                return;
+            }
+            test.RunState = RunState.Skipped;
+            test.Properties.Add("_SKIPREASON", m_skippedReason);
+        }
+
+        internal bool IsPlatformSupported(RuntimePlatform testTargetPlatform)
+        {
+            if (include.Any() && !include.Any(x => x == testTargetPlatform))
+            {
+                m_skippedReason = string.Format("Only supported on {0}", string.Join(", ", include.Select(x => x.ToString()).ToArray()));
+                return false;
+            }
+
+            if (exclude.Any(x => x == testTargetPlatform))
+            {
+                m_skippedReason = string.Format("Not supported on  {0}", string.Join(", ", include.Select(x => x.ToString()).ToArray()));
+                return false;
+            }
+            return true;
+        }
+    }
+}

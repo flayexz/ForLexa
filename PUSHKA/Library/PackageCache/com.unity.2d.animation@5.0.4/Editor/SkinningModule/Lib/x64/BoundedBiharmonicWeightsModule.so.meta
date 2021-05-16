@@ -1,60 +1,83 @@
-using System;
-using UnityEngine;
-using UnityEngine.Playables;
-using UnityEngine.Timeline;
-
-namespace UnityEditor.Timeline
-{
-    class SequenceState : ISequenceState
-    {
-        readonly WindowState m_WindowState;
-        readonly SequenceState m_ParentSequence;
-
-        double m_Time;
-        Range? m_CachedEvaluableRange;
-
-        public TimelineAsset asset { get; }
-        public PlayableDirector director { get; }
-        public TimelineClip hostClip { get; }
-        public double start { get; }
-        public double timeScale { get; }
-
-        public double duration
-        {
-            get
-            {
-                if (asset == null)
-                    return 0.0;
-
-                var assetDuration = asset.durationMode == TimelineAsset.DurationMode.FixedLength ? asset.fixedDuration : asset.duration;
-                return hostClip == null ? assetDuration : Math.Min(hostClip.duration, assetDuration);
-            }
-        }
-
-        bool? m_IsReadOnly;
-        public bool isReadOnly
-        {
-            get
-            {
-                if (!m_IsReadOnly.HasValue)
-                    m_IsReadOnly = FileUtil.IsReadOnly(asset);
-                return m_IsReadOnly.Value;
-            }
-        }
-
-        public void ResetIsReadOnly()
-        {
-            m_IsReadOnly = null;
-        }
-
-        public TimelineAssetViewModel viewModel
-        {
-            get
-            {
-                return TimelineWindowViewPrefs.GetOrCreateViewModel(asset);
-            }
-        }
-
-        public double time
-        {
-      
+fileFormatVersion: 2
+guid: 35869f4d0e1d03e4ebffcc461c55773f
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      '': Any
+    second:
+      enabled: 0
+      settings:
+        Exclude Editor: 0
+        Exclude Linux: 1
+        Exclude Linux64: 1
+        Exclude LinuxUniversal: 1
+        Exclude OSXUniversal: 1
+        Exclude Win: 1
+        Exclude Win64: 1
+  - first:
+      Any: 
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 1
+      settings:
+        CPU: x86_64
+        DefaultValueInitialized: true
+        OS: Linux
+  - first:
+      Facebook: Win
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Facebook: Win64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Linux
+    second:
+      enabled: 0
+      settings:
+        CPU: x86
+  - first:
+      Standalone: Linux64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: OSXUniversal
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Win
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Win64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

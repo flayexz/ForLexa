@@ -20,6 +20,8 @@ public class Zombie : MonoBehaviour, IEnemy
     private Rigidbody2D rbPlayer;
     private Player player;
     private ScoreManager scoreManager;
+    private Collider2D triggerZone;
+    private bool isReload => timePassed < AttackDelay;
     
     void Start()
     {
@@ -27,6 +29,7 @@ public class Zombie : MonoBehaviour, IEnemy
         rb = GetComponent<Rigidbody2D>();
         rbPlayer = player.GetComponent<Rigidbody2D>();
         scoreManager = FindObjectOfType<ScoreManager>();
+        triggerZone = GetComponents<Collider2D>().First(x => x.isTrigger);
     }
 
     void Update()
@@ -37,12 +40,7 @@ public class Zombie : MonoBehaviour, IEnemy
             scoreManager.Score += KillPoints;
         }
 
-        if (timePassed > AttackDelay)
-        {
-            AttackPlayer(damageByHand);
-            timePassed = 0;
-        }
-        else
+        if (isReload)
             timePassed += Time.deltaTime;
     }
 
@@ -52,9 +50,18 @@ public class Zombie : MonoBehaviour, IEnemy
     }
 
     public void TakeDamage(double damage) => Health -= damage;
-    public void AttackPlayer(double damage)
+    
+    private void OnTriggerStay2D(Collider2D collision)
     {
-        Physics2D.OverlapCircleAll(transform.position, attackRange)
-            .Select(x => x.GetComponent<IPlayer>()).First(x => x != null).TakeDamage(damage);
+        if (collision.TryGetComponent<IPlayer>(out IPlayer pl))
+        {
+            if (!isReload)
+            {
+                AttackPlayer(damageByHand, pl);
+                timePassed = 0;
+            }
+        }
     }
+
+    public void AttackPlayer(double damage, IPlayer target) => target.TakeDamage(damage);
 }

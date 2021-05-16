@@ -1,34 +1,36 @@
-    /// the nearest obstacle</summary>
-            PullCameraForward,
-            /// <summary>In addition to pulling the camera forward, an effort will be made to
-            /// return the camera to its original height</summary>
-            PreserveCameraHeight,
-            /// <summary>In addition to pulling the camera forward, an effort will be made to
-            /// return the camera to its original distance from the target</summary>
-            PreserveCameraDistance
-        };
-        /// <summary>The way in which the Collider will attempt to preserve sight of the target.</summary>
-        [Tooltip("The way in which the Collider will attempt to preserve sight of the target.")]
-        public ResolutionStrategy m_Strategy = ResolutionStrategy.PreserveCameraHeight;
+using System;
 
+namespace UnityEngine.TestTools
+{
+    /// <summary>
+    /// The presence of this attribute will cause the test runner to require that every single log is expected. By
+    /// default, the runner will only automatically fail on any error logs, so this adds warnings and infos as well.
+    /// It is the same as calling `LogAssert.NoUnexpectedReceived()` at the bottom of every affected test.
+    ///
+    /// This attribute can be applied to test assemblies (will affect every test in the assembly), fixtures (will
+    /// affect every test in the fixture), or on individual test methods. It is also automatically inherited from base
+    /// fixtures.
+    ///
+    /// The MustExpect property (on by default) lets you selectively enable or disable the higher level value. For
+    /// example when migrating an assembly to this more strict checking method, you might attach
+    /// `[assembly:TestMustExpectAllLogs]` to the assembly itself, but then whitelist failing fixtures and test methods
+    /// with `[TestMustExpectAllLogs(MustExpect=false)]` until they can be migrated. This also means new tests in that
+    /// assembly would be required to have the more strict checking. 
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Assembly | AttributeTargets.Class | AttributeTargets.Method)]
+    public class TestMustExpectAllLogsAttribute : Attribute
+    {
         /// <summary>
-        /// Upper limit on how many obstacle hits to process.  Higher numbers may impact performance.
-        /// In most environments, 4 is enough.
+        /// Initializes and returns an instance of TestMustExpectAllLogsAttribute.
         /// </summary>
-        [Range(1, 10)]
-        [Tooltip("Upper limit on how many obstacle hits to process.  Higher numbers may impact performance.  In most environments, 4 is enough.")]
-        public int m_MaximumEffort = 4;
-
+        /// <param name="mustExpect">
+        /// A value indicating whether the test must expect all logs.
+        /// </param>
+        public TestMustExpectAllLogsAttribute(bool mustExpect = true)
+            => MustExpect = mustExpect;
         /// <summary>
-        /// Smoothing to apply to obstruction resolution.  Nearest camera point is held for at least this long.
+        /// Returns the flag of whether the test must expect all logs.
         /// </summary>
-        [Range(0, 2)]
-        [Tooltip("Smoothing to apply to obstruction resolution.  Nearest camera point is held for at least this long")]
-        public float m_SmoothingTime = 0;
-
-        /// <summary>
-        /// How gradually the camera returns to its normal position after having been corrected.
-        /// Higher numbers will move the camera more gradually back to normal.
-        /// </summary>
-        [Range(0, 10)]
-        [Tooltip("How gradually the camera returns to its normal position after having been corrected.  Higher numbers will move the camera more gradually back to normal."
+        public bool MustExpect { get; }
+    }
+}

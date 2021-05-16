@@ -1,13 +1,25 @@
-This package contains third-party software components governed by the license(s) indicated below:
----------
+﻿using UnityEngine;
 
-Component Name: VSWhere
+namespace UnityEditor.U2D.Path.GUIFramework
+{
+    public struct LayoutData
+    {
+        public int index;
+        public float distance;
+        public Vector3 position;
+        public Vector3 forward;
+        public Vector3 up;
+        public Vector3 right;
+        public object userData;
 
-License Type: "MIT"
+        public static readonly LayoutData zero = new LayoutData() { index = 0, distance = float.MaxValue, position = Vector3.zero, forward = Vector3.forward, up = Vector3.up, right = Vector3.right };
 
-The MIT License (MIT) 
-Copyright (C) Microsoft Corporation. All rights reserved.
+        public static LayoutData Nearest(LayoutData currentData, LayoutData newData)
+        {
+            if (newData.distance <= currentData.distance)
+                return newData;
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substa
+            return currentData;
+        }
+    }
+}

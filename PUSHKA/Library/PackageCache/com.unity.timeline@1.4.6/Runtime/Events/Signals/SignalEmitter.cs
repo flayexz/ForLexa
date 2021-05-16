@@ -1,59 +1,72 @@
-        {
-                        sb.Append("[");
-                        sb.Append(vcam.Name);
-                        sb.Append("]");
-                    }
-                }
-                string text = sb.ToString();
-                Rect r = CinemachineDebug.GetScreenPos(this, text, GUI.skin.box);
-                GUI.Label(r, text, GUI.skin.box);
-                GUI.color = color;
-                CinemachineDebug.ReturnToPool(sb);
-            }
-        }
+using System;
+using UnityEngine;
+using UnityEngine.Playables;
 
-#if UNITY_EDITOR
-        private void OnGUI()
-        {
-            if (CinemachineDebug.OnGUIHandlers != null)
-                CinemachineDebug.OnGUIHandlers();
-        }
-#endif
+namespace UnityEngine.Timeline
+{
+    /// <summary>
+    /// Marker that emits a signal to a SignalReceiver.
+    /// </summary>
+    /// A SignalEmitter emits a notification through the playable system. A SignalEmitter is used with a SignalReceiver and a SignalAsset.
+    /// <seealso cref="UnityEngine.Timeline.SignalAsset"/>
+    /// <seealso cref="UnityEngine.Timeline.SignalReceiver"/>
+    /// <seealso cref="UnityEngine.Timeline.Marker"/>
+    [Serializable]
+    [CustomStyle("SignalEmitter")]
+    [ExcludeFromPreset]
+    public class SignalEmitter : Marker, INotification, INotificationOptionProvider
+    {
+        [SerializeField] bool m_Retroactive;
+        [SerializeField] bool m_EmitOnce;
+        [SerializeField] SignalAsset m_Asset;
 
-        WaitForFixedUpdate mWaitForFixedUpdate = new WaitForFixedUpdate();
-        private IEnumerator AfterPhysics()
+        /// <summary>
+        /// Use retroactive to emit the signal if playback starts after the SignalEmitter time.
+        /// </summary>
+        public bool retroactive
         {
-            while (true)
-            {
-                // FixedUpdate can be called multiple times per frame
-                yield return mWaitForFixedUpdate;
-                if (m_UpdateMethod == UpdateMethod.FixedUpdate
-                    || m_UpdateMethod == UpdateMethod.SmartUpdate)
-                {
-                    CinemachineCore.UpdateFilter filter = CinemachineCore.UpdateFilter.Fixed;
-                    if (m_UpdateMethod == UpdateMethod.SmartUpdate)
-                    {
-                        // Track the targets
-                        UpdateTracker.OnUpdate(UpdateTracker.UpdateClock.Fixed);
-                        filter = CinemachineCore.UpdateFilter.SmartFixed;
-                    }
-                    UpdateVirtualCameras(filter, GetEffectiveDeltaTime(true));
-                }
-                // Choose the active vcam and apply it to the Unity camera
-                if (m_BlendUpdateMethod == BrainUpdateMethod.FixedUpdate)
-                {
-                    UpdateFrame0(Time.fixedDeltaTime);
-                    ProcessActiveCamera(Time.fixedDeltaTime);
-                }
-            }
-        }
-
-        private void LateUpdate()
-        {
-            if (m_UpdateMethod != UpdateMethod.ManualUpdate)
-                ManualUpdate();
+            get { return m_Retroactive; }
+            set { m_Retroactive = value; }
         }
 
         /// <summary>
-        /// Call this method explicitly from an external script to update the virtual cameras
-        /// and position the main camera, if the Up
+        /// Use emitOnce to emit this signal once during loops.
+        /// </summary>
+        public bool emitOnce
+        {
+            get { return m_EmitOnce; }
+            set { m_EmitOnce = value; }
+        }
+
+        /// <summary>
+        /// Asset representing the signal being emitted.
+        /// </summary>
+        public SignalAsset asset
+        {
+            get { return m_Asset; }
+            set { m_Asset = value; }
+        }
+
+        PropertyName INotification.id
+        {
+            get
+            {
+                if (m_Asset != null)
+                {
+                    return new PropertyName(m_Asset.name);
+                }
+                return new PropertyName(string.Empty);
+            }
+        }
+
+        NotificationFlags INotificationOptionProvider.flags
+        {
+            get
+            {
+                return (retroactive ? NotificationFlags.Retroactive : default(NotificationFlags)) |
+                    (emitOnce ? NotificationFlags.TriggerOnce : default(NotificationFlags)) |
+                    NotificationFlags.TriggerInEditMode;
+            }
+        }
+    }
+}

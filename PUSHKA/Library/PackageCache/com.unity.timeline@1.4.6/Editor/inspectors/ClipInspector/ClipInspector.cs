@@ -1,771 +1,818 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Security;
-using System.Security.Cryptography;
-using System.Text;
-using UnityEditor;
-using UnityEditor.Compilation;
+using UnityEditorInternal;
 using UnityEngine;
-using UnityEngine.Profiling;
+using UnityEngine.Timeline;
+using UnityObject = UnityEngine.Object;
 
-namespace VSCodeEditor
+namespace UnityEditor.Timeline
 {
-    public interface IGenerator
+    [CustomEditor(typeof(EditorClip)), CanEditMultipleObjects]
+    class ClipInspector : Editor
     {
-        bool SyncIfNeeded(List<string> affectedFiles, string[] reimportedFiles);
-        void Sync();
-        string SolutionFile();
-        string ProjectDirectory { get; }
-        IAssemblyNameProvider AssemblyNameProvider { get; }
-        void GenerateAll(bool generateAll);
-        bool SolutionExists();
-    }
-
-    public class ProjectGeneration : IGenerator
-    {
-        enum ScriptingLanguage
+        internal static class Styles
         {
-            None,
-            CSharp
+            public static readonly GUIContent StartName = EditorGUIUtility.TrTextContent("Start", "The start time of the clip");
+            public static readonly GUIContent DurationName = EditorGUIUtility.TrTextContent("Duration", "The length of the clip");
+            public static readonly GUIContent EndName = EditorGUIUtility.TrTextContent("End", "The end time of the clip");
+            public static readonly GUIContent EaseInDurationName = EditorGUIUtility.TrTextContent("Ease In Duration", "The length of the ease in");
+            public static readonly GUIContent BlendInDurationName = EditorGUIUtility.TrTextContent("Blend In Duration", "The length of the blend in");
+            public static readonly GUIContent EaseOutDurationName = EditorGUIUtility.TrTextContent("Ease Out Duration", "The length of the ease out");
+            public static readonly GUIContent BlendOutDurationName = EditorGUIUtility.TrTextContent("Blend Out Duration", "The length of the blend out");
+            public static readonly GUIContent ClipInName = EditorGUIUtility.TrTextContent("Clip In", "Start the clip at this local time");
+            public static readonly GUIContent TimeScaleName = EditorGUIUtility.TrTextContent("Speed Multiplier", "Time scale of the playback speed");
+            public static readonly GUIContent PreExtrapolateLabel = EditorGUIUtility.TrTextContent("Pre-Extrapolate", "Extrapolation used prior to the first clip");
+            public static readonly GUIContent PostExtrapolateLabel = EditorGUIUtility.TrTextContent("Post-Extrapolate", "Extrapolation used after a clip ends");
+            public static readonly GUIContent BlendInCurveName = EditorGUIUtility.TrTextContent("In", "Blend In Curve");
+            public static readonly GUIContent BlendOutCurveName = EditorGUIUtility.TrTextContent("Out", "Blend Out Curve");
+            public static readonly GUIContent PreviewTitle = EditorGUIUtility.TrTextContent("Curve Editor");
+            public static readonly GUIContent ClipTimingTitle = EditorGUIUtility.TrTextContent("Clip Timing");
+            public static readonly GUIContent AnimationExtrapolationTitle = EditorGUIUtility.TrTextContent("Animation Extrapolation");
+            public static readonly GUIContent BlendCurvesTitle = EditorGUIUtility.TrTextContent("Blend Curves");
+            public static readonly GUIContent GroupTimingTitle = EditorGUIUtility.TrTextContent("Multiple Clip Timing");
+            public static readonly GUIContent MultipleClipsSelectedIncompatibleCapabilitiesWarning = EditorGUIUtility.TrTextContent("Multiple clips selected. Only common properties are shown.");
+            public static readonly GUIContent MultipleSelectionTitle = EditorGUIUtility.TrTextContent("Timeline Clips");
+            public static readonly GUIContent MultipleClipStartName = EditorGUIUtility.TrTextContent("Start", "The start time of the clip group");
+            public static readonly GUIContent MultipleClipEndName = EditorGUIUtility.TrTextContent("End", "The end time of the clip group");
+            public static readonly GUIContent TimelineClipFG = DirectorStyles.IconContent("TimelineClipFG");
+            public static readonly GUIContent TimelineClipBG = DirectorStyles.IconContent("TimelineClipBG");
         }
 
-        public static readonly string MSBuildNamespaceUri = "http://schemas.microsoft.com/developer/msbuild/2003";
-
-        const string k_WindowsNewline = "\r\n";
-
-        const string k_SettingsJson = @"{
-    ""files.exclude"":
-    {
-        ""**/.DS_Store"":true,
-        ""**/.git"":true,
-        ""**/.gitignore"":true,
-        ""**/.gitmodules"":true,
-        ""**/*.booproj"":true,
-        ""**/*.pidb"":true,
-        ""**/*.suo"":true,
-        ""**/*.user"":true,
-        ""**/*.userprefs"":true,
-        ""**/*.unityproj"":true,
-        ""**/*.dll"":true,
-        ""**/*.exe"":true,
-        ""**/*.pdf"":true,
-        ""**/*.mid"":true,
-        ""**/*.midi"":true,
-        ""**/*.wav"":true,
-        ""**/*.gif"":true,
-        ""**/*.ico"":true,
-        ""**/*.jpg"":true,
-        ""**/*.jpeg"":true,
-        ""**/*.png"":true,
-        ""**/*.psd"":true,
-        ""**/*.tga"":true,
-        ""**/*.tif"":true,
-        ""**/*.tiff"":true,
-        ""**/*.3ds"":true,
-        ""**/*.3DS"":true,
-        ""**/*.fbx"":true,
-        ""**/*.FBX"":true,
-        ""**/*.lxo"":true,
-        ""**/*.LXO"":true,
-        ""**/*.ma"":true,
-        ""**/*.MA"":true,
-        ""**/*.obj"":true,
-        ""**/*.OBJ"":true,
-        ""**/*.asset"":true,
-        ""**/*.cubemap"":true,
-        ""**/*.flare"":true,
-        ""**/*.mat"":true,
-        ""**/*.meta"":true,
-        ""**/*.prefab"":true,
-        ""**/*.unity"":true,
-        ""build/"":true,
-        ""Build/"":true,
-        ""Library/"":true,
-        ""library/"":true,
-        ""obj/"":true,
-        ""Obj/"":true,
-        ""ProjectSettings/"":true,
-        ""temp/"":true,
-        ""Temp/"":true
-    }
-}";
-
-        /// <summary>
-        /// Map source extensions to ScriptingLanguages
-        /// </summary>
-        static readonly Dictionary<string, ScriptingLanguage> k_BuiltinSupportedExtensions = new Dictionary<string, ScriptingLanguage>
+        class EditorClipSelection : ICurvesOwnerInspectorWrapper
         {
-            { "cs", ScriptingLanguage.CSharp },
-            { "uxml", ScriptingLanguage.None },
-            { "uss", ScriptingLanguage.None },
-            { "shader", ScriptingLanguage.None },
-            { "compute", ScriptingLanguage.None },
-            { "cginc", ScriptingLanguage.None },
-            { "hlsl", ScriptingLanguage.None },
-            { "glslinc", ScriptingLanguage.None },
-            { "template", ScriptingLanguage.None },
-            { "raytrace", ScriptingLanguage.None }
-        };
+            public EditorClip editorClip { get; }
 
-        string m_SolutionProjectEntryTemplate = string.Join("\r\n", @"Project(""{{{0}}}"") = ""{1}"", ""{2}"", ""{{{3}}}""", @"EndProject").Replace("    ", "\t");
-
-        string m_SolutionProjectConfigurationTemplate = string.Join("\r\n", @"        {{{0}}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU", @"        {{{0}}}.Debug|Any CPU.Build.0 = Debug|Any CPU").Replace("    ", "\t");
-
-        static readonly string[] k_ReimportSyncExtensions = { ".dll", ".asmdef" };
-
-        string[] m_ProjectSupportedExtensions = new string[0];
-        public string ProjectDirectory { get; }
-        IAssemblyNameProvider IGenerator.AssemblyNameProvider => m_AssemblyNameProvider;
-
-        public void GenerateAll(bool generateAll)
-        {
-            m_AssemblyNameProvider.ToggleProjectGeneration(
-                ProjectGenerationFlag.BuiltIn
-                | ProjectGenerationFlag.Embedded
-                | ProjectGenerationFlag.Git
-                | ProjectGenerationFlag.Local
-#if UNITY_2019_3_OR_NEWER
-                | ProjectGenerationFlag.LocalTarBall
-#endif
-                | ProjectGenerationFlag.PlayerAssemblies
-                | ProjectGenerationFlag.Registry
-                | ProjectGenerationFlag.Unknown);
-        }
-
-        readonly string m_ProjectName;
-        readonly IAssemblyNameProvider m_AssemblyNameProvider;
-        readonly IFileIO m_FileIOProvider;
-        readonly IGUIDGenerator m_GUIDProvider;
-
-        const string k_ToolsVersion = "4.0";
-        const string k_ProductVersion = "10.0.20506";
-        const string k_BaseDirectory = ".";
-        const string k_TargetFrameworkVersion = "v4.7.1";
-        const string k_TargetLanguageVersion = "latest";
-
-        public ProjectGeneration(string tempDirectory)
-            : this(tempDirectory, new AssemblyNameProvider(), new FileIOProvider(), new GUIDProvider()) { }
-
-        public ProjectGeneration(string tempDirectory, IAssemblyNameProvider assemblyNameProvider, IFileIO fileIO, IGUIDGenerator guidGenerator)
-        {
-            ProjectDirectory = tempDirectory.Replace('\\', '/');
-            m_ProjectName = Path.GetFileName(ProjectDirectory);
-            m_AssemblyNameProvider = assemblyNameProvider;
-            m_FileIOProvider = fileIO;
-            m_GUIDProvider = guidGenerator;
-        }
-
-        /// <summary>
-        /// Syncs the scripting solution if any affected files are relevant.
-        /// </summary>
-        /// <returns>
-        /// Whether the solution was synced.
-        /// </returns>
-        /// <param name='affectedFiles'>
-        /// A set of files whose status has changed
-        /// </param>
-        /// <param name="reimportedFiles">
-        /// A set of files that got reimported
-        /// </param>
-        public bool SyncIfNeeded(List<string> affectedFiles, string[] reimportedFiles)
-        {
-            Profiler.BeginSample("SolutionSynchronizerSync");
-            SetupProjectSupportedExtensions();
-
-            // Don't sync if we haven't synced before
-            if (SolutionExists() && HasFilesBeenModified(affectedFiles, reimportedFiles))
+            public TimelineClip clip
             {
-                var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
-                var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
-                SyncSolution(allProjectAssemblies);
-
-                var allAssetProjectParts = GenerateAllAssetProjectParts();
-
-                var affectedNames = affectedFiles.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset)).Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Split(new [] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
-                var reimportedNames = reimportedFiles.Select(asset => m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset)).Where(name => !string.IsNullOrWhiteSpace(name)).Select(name => name.Split(new [] {".dll"}, StringSplitOptions.RemoveEmptyEntries)[0]);
-                var affectedAndReimported = new HashSet<string>(affectedNames.Concat(reimportedNames));
-                var assemblyNames = new HashSet<string>(allProjectAssemblies.Select(assembly => Path.GetFileName(assembly.outputPath)));
-
-                foreach (var assembly in allProjectAssemblies)
-                {
-                    if (!affectedAndReimported.Contains(assembly.name))
-                        continue;
-
-                    SyncProject(assembly, allAssetProjectParts, ParseResponseFileData(assembly), assemblyNames);
-                }
-
-                Profiler.EndSample();
-                return true;
+                get { return editorClip == null ? null : editorClip.clip; }
             }
 
-            Profiler.EndSample();
-            return false;
-        }
+            public SerializedObject serializedPlayableAsset { get; }
 
-        bool HasFilesBeenModified(List<string> affectedFiles, string[] reimportedFiles)
-        {
-            return affectedFiles.Any(ShouldFileBePartOfSolution) || reimportedFiles.Any(ShouldSyncOnReimportedAsset);
-        }
-
-        static bool ShouldSyncOnReimportedAsset(string asset)
-        {
-            return k_ReimportSyncExtensions.Contains(new FileInfo(asset).Extension);
-        }
-
-        public void Sync()
-        {
-            SetupProjectSupportedExtensions();
-            GenerateAndWriteSolutionAndProjects();
-        }
-
-        public bool SolutionExists()
-        {
-            return m_FileIOProvider.Exists(SolutionFile());
-        }
-
-        void SetupProjectSupportedExtensions()
-        {
-            m_ProjectSupportedExtensions = m_AssemblyNameProvider.ProjectSupportedExtensions;
-        }
-
-        bool ShouldFileBePartOfSolution(string file)
-        {
-            // Exclude files coming from packages except if they are internalized.
-            if (m_AssemblyNameProvider.IsInternalizedPackagePath(file))
+            public ICurvesOwner curvesOwner
             {
+                get { return clip; }
+            }
+
+            public int lastCurveVersion { get; set; }
+            public double lastEvalTime { get; set; }
+
+            public EditorClipSelection(EditorClip anEditorClip)
+            {
+                editorClip = anEditorClip;
+                lastCurveVersion = -1;
+                lastEvalTime = -1;
+
+                var so = new SerializedObject(editorClip);
+                var playableAssetProperty = so.FindProperty("m_Clip.m_Asset");
+                if (playableAssetProperty != null)
+                {
+                    var asset = playableAssetProperty.objectReferenceValue as UnityEngine.Playables.PlayableAsset;
+                    if (asset != null)
+                        serializedPlayableAsset = new SerializedObject(asset);
+                }
+            }
+
+            public double ToLocalTime(double time)
+            {
+                return clip == null ? time : clip.ToLocalTime(time);
+            }
+        }
+
+        enum PreviewCurveState
+        {
+            None = 0,
+            MixIn = 1,
+            MixOut = 2
+        }
+
+
+        SerializedProperty m_DisplayNameProperty;
+        SerializedProperty m_BlendInDurationProperty;
+        SerializedProperty m_BlendOutDurationProperty;
+        SerializedProperty m_EaseInDurationProperty;
+        SerializedProperty m_EaseOutDurationProperty;
+        SerializedProperty m_ClipInProperty;
+        SerializedProperty m_TimeScaleProperty;
+        SerializedProperty m_PostExtrapolationModeProperty;
+        SerializedProperty m_PreExtrapolationModeProperty;
+        SerializedProperty m_PostExtrapolationTimeProperty;
+        SerializedProperty m_PreExtrapolationTimeProperty;
+        SerializedProperty m_MixInCurveProperty;
+        SerializedProperty m_MixOutCurveProperty;
+        SerializedProperty m_BlendInCurveModeProperty;
+        SerializedProperty m_BlendOutCurveModeProperty;
+
+        void InitializeProperties()
+        {
+            m_DisplayNameProperty = serializedObject.FindProperty("m_Clip.m_DisplayName");
+            m_BlendInDurationProperty = serializedObject.FindProperty("m_Clip.m_BlendInDuration");
+            m_BlendOutDurationProperty = serializedObject.FindProperty("m_Clip.m_BlendOutDuration");
+            m_EaseInDurationProperty = serializedObject.FindProperty("m_Clip.m_EaseInDuration");
+            m_EaseOutDurationProperty = serializedObject.FindProperty("m_Clip.m_EaseOutDuration");
+            m_ClipInProperty = serializedObject.FindProperty("m_Clip.m_ClipIn");
+            m_TimeScaleProperty = serializedObject.FindProperty("m_Clip.m_TimeScale");
+            m_PostExtrapolationModeProperty = serializedObject.FindProperty("m_Clip.m_PostExtrapolationMode");
+            m_PreExtrapolationModeProperty = serializedObject.FindProperty("m_Clip.m_PreExtrapolationMode");
+            m_PostExtrapolationTimeProperty = serializedObject.FindProperty("m_Clip.m_PostExtrapolationTime");
+            m_PreExtrapolationTimeProperty = serializedObject.FindProperty("m_Clip.m_PreExtrapolationTime");
+            m_MixInCurveProperty = serializedObject.FindProperty("m_Clip.m_MixInCurve");
+            m_MixOutCurveProperty = serializedObject.FindProperty("m_Clip.m_MixOutCurve");
+            m_BlendInCurveModeProperty = serializedObject.FindProperty("m_Clip.m_BlendInCurveMode");
+            m_BlendOutCurveModeProperty = serializedObject.FindProperty("m_Clip.m_BlendOutCurveMode");
+        }
+
+        TimelineAsset m_TimelineAsset;
+
+        List<EditorClipSelection> m_SelectionCache;
+        Editor m_SelectedPlayableAssetsInspector;
+
+        ClipInspectorCurveEditor m_ClipCurveEditor;
+        CurvePresetLibrary m_CurvePresets;
+
+        bool m_IsClipAssetInspectorExpanded = true;
+        GUIContent m_ClipAssetTitle = new GUIContent();
+        string m_MultiselectionHeaderTitle;
+
+        ClipInspectorSelectionInfo m_SelectionInfo;
+
+        // the state of the mixin curve preview
+        PreviewCurveState m_PreviewCurveState;
+
+        const double k_TimeScaleSensitivity = 0.003;
+
+
+
+        bool hasMultipleSelection
+        {
+            get { return targets.Length > 1; }
+        }
+
+        float currentFrameRate
+        {
+            get { return m_TimelineAsset != null ? m_TimelineAsset.editorSettings.fps : TimelineAsset.EditorSettings.kDefaultFps; }
+        }
+
+        bool selectionHasIncompatibleCapabilities
+        {
+            get
+            {
+                return !(m_SelectionInfo.supportsBlending
+                    && m_SelectionInfo.supportsClipIn
+                    && m_SelectionInfo.supportsExtrapolation
+                    && m_SelectionInfo.supportsSpeedMultiplier);
+            }
+        }
+
+        public override bool RequiresConstantRepaint()
+        {
+            return base.RequiresConstantRepaint() || (m_SelectedPlayableAssetsInspector != null && m_SelectedPlayableAssetsInspector.RequiresConstantRepaint());
+        }
+
+        internal override void OnHeaderTitleGUI(Rect titleRect, string header)
+        {
+            if (hasMultipleSelection)
+            {
+                base.OnHeaderTitleGUI(titleRect, m_MultiselectionHeaderTitle);
+                return;
+            }
+
+            if (m_DisplayNameProperty != null)
+            {
+                using (new EditorGUI.DisabledScope(!IsEnabled()))
+                {
+                    serializedObject.Update();
+                    if (IsLocked())
+                    {
+                        base.OnHeaderTitleGUI(titleRect, m_DisplayNameProperty.stringValue);
+                    }
+                    else
+                    {
+                        EditorGUI.BeginChangeCheck();
+                        EditorGUI.DelayedTextField(titleRect, m_DisplayNameProperty, GUIContent.none);
+                        if (EditorGUI.EndChangeCheck())
+                        {
+                            ApplyModifiedProperties();
+                            TimelineWindow.RepaintIfEditingTimelineAsset(m_TimelineAsset);
+                        }
+                    }
+                }
+            }
+        }
+
+        internal override Rect DrawHeaderHelpAndSettingsGUI(Rect r)
+        {
+            using (new EditorGUI.DisabledScope(IsLocked()))
+            {
+                var helpSize = EditorStyles.iconButton.CalcSize(EditorGUI.GUIContents.helpIcon);
+                const int kTopMargin = 5;
+                // Show Editor Header Items.
+                return EditorGUIUtility.DrawEditorHeaderItems(new Rect(r.xMax - helpSize.x, r.y + kTopMargin, helpSize.x, helpSize.y), targets);
+            }
+        }
+
+        internal override void OnHeaderIconGUI(Rect iconRect)
+        {
+            using (new EditorGUI.DisabledScope(IsLocked()))
+            {
+                var bgColor = Color.white;
+                if (!EditorGUIUtility.isProSkin)
+                    bgColor.a = 0.55f;
+                using (new GUIColorOverride(bgColor))
+                {
+                    GUI.Label(iconRect, Styles.TimelineClipBG);
+                }
+
+                var fgColor = Color.white;
+                if (m_SelectionInfo != null && m_SelectionInfo.uniqueParentTracks.Count == 1)
+                    fgColor = TrackResourceCache.GetTrackColor(m_SelectionInfo.uniqueParentTracks.First());
+
+                using (new GUIColorOverride(fgColor))
+                {
+                    GUI.Label(iconRect, Styles.TimelineClipFG);
+                }
+            }
+        }
+
+        public void OnEnable()
+        {
+            Undo.undoRedoPerformed += OnUndoRedoPerformed;
+
+            m_ClipCurveEditor = new ClipInspectorCurveEditor();
+
+            m_SelectionCache = new List<EditorClipSelection>();
+            var selectedClips = new List<TimelineClip>();
+            foreach (var editorClipObject in targets)
+            {
+                var editorClip = editorClipObject as EditorClip;
+                if (editorClip != null)
+                {
+                    //all selected clips should have the same TimelineAsset
+                    if (!IsTimelineAssetValidForEditorClip(editorClip))
+                    {
+                        m_SelectionCache.Clear();
+                        return;
+                    }
+                    m_SelectionCache.Add(new EditorClipSelection(editorClip));
+                    selectedClips.Add(editorClip.clip);
+                }
+            }
+
+            InitializeProperties();
+            m_SelectionInfo = new ClipInspectorSelectionInfo(selectedClips);
+
+            if (m_SelectionInfo.selectedAssetTypesAreHomogeneous)
+            {
+                var selectedAssets = m_SelectionCache.Select(e => e.clip.asset).ToArray();
+                m_SelectedPlayableAssetsInspector = TimelineInspectorUtility.GetInspectorForObjects(selectedAssets);
+            }
+
+            m_MultiselectionHeaderTitle = m_SelectionCache.Count + " " + Styles.MultipleSelectionTitle.text;
+            m_ClipAssetTitle.text = PlayableAssetSectionTitle();
+        }
+
+        void OnDisable()
+        {
+            Undo.undoRedoPerformed -= OnUndoRedoPerformed;
+        }
+
+        void DrawClipProperties()
+        {
+            var dirtyEditorClipSelection = m_SelectionCache.Where(s => s.editorClip.GetHashCode() != s.editorClip.lastHash);
+            UnselectCurves();
+
+            EditorGUI.BeginChangeCheck();
+
+            //Group Selection
+            if (hasMultipleSelection)
+            {
+                GUILayout.Label(Styles.GroupTimingTitle);
+                EditorGUI.indentLevel++;
+                DrawGroupSelectionProperties();
+                EditorGUI.indentLevel--;
+                EditorGUILayout.Space();
+            }
+
+            //Draw clip timing
+            GUILayout.Label(Styles.ClipTimingTitle);
+
+            if (hasMultipleSelection && selectionHasIncompatibleCapabilities)
+            {
+                GUILayout.Label(Styles.MultipleClipsSelectedIncompatibleCapabilitiesWarning, EditorStyles.helpBox);
+            }
+
+            EditorGUI.indentLevel++;
+
+            if (!m_SelectionInfo.containsAtLeastTwoClipsOnTheSameTrack)
+            {
+                DrawStartTimeField();
+                DrawEndTimeField();
+            }
+
+            if (!hasMultipleSelection)
+            {
+                DrawDurationProperty();
+            }
+
+            if (m_SelectionInfo.supportsBlending)
+            {
+                EditorGUILayout.Space();
+                DrawBlendingProperties();
+            }
+
+            if (m_SelectionInfo.supportsClipIn)
+            {
+                EditorGUILayout.Space();
+                DrawClipInProperty();
+            }
+
+            if (!hasMultipleSelection && m_SelectionInfo.supportsSpeedMultiplier)
+            {
+                EditorGUILayout.Space();
+                DrawTimeScale();
+            }
+
+            EditorGUI.indentLevel--;
+
+            bool hasDirtyEditorClips = false;
+            foreach (var editorClipSelection in dirtyEditorClipSelection)
+            {
+                EditorUtility.SetDirty(editorClipSelection.editorClip);
+                hasDirtyEditorClips = true;
+            }
+
+            //Re-evaluate the graph in case of a change in properties
+            bool propertiesHaveChanged = false;
+            if (EditorGUI.EndChangeCheck() || hasDirtyEditorClips)
+            {
+                if (TimelineWindow.IsEditingTimelineAsset(m_TimelineAsset) && TimelineWindow.instance.state != null)
+                {
+                    TimelineWindow.instance.state.Evaluate();
+                    TimelineWindow.instance.Repaint();
+                }
+                propertiesHaveChanged = true;
+            }
+
+            //Draw Animation Extrapolation
+            if (m_SelectionInfo.supportsExtrapolation)
+            {
+                EditorGUILayout.Space();
+                GUILayout.Label(Styles.AnimationExtrapolationTitle);
+                EditorGUI.indentLevel++;
+                DrawExtrapolationOptions();
+                EditorGUI.indentLevel--;
+            }
+
+            //Blend curves
+            if (m_SelectionInfo.supportsBlending)
+            {
+                EditorGUILayout.Space();
+                GUILayout.Label(Styles.BlendCurvesTitle);
+                EditorGUI.indentLevel++;
+                DrawBlendOptions();
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.Space();
+
+            if (CanShowPlayableAssetInspector())
+            {
+                DrawClipAssetGui();
+            }
+
+            if (propertiesHaveChanged)
+            {
+                foreach (var item in m_SelectionCache)
+                    item.editorClip.lastHash = item.editorClip.GetHashCode();
+                m_SelectionInfo.Update();
+            }
+        }
+
+        public override void OnInspectorGUI()
+        {
+            if (TimelineWindow.instance == null || m_TimelineAsset == null)
+                return;
+
+            using (new EditorGUI.DisabledScope(IsLocked()))
+            {
+                EditMode.HandleModeClutch();
+
+                serializedObject.Update();
+                DrawClipProperties();
+                ApplyModifiedProperties();
+            }
+        }
+
+        internal override bool IsEnabled()
+        {
+            if (!TimelineUtility.IsCurrentSequenceValid() || IsCurrentSequenceReadOnly())
+                return false;
+
+            if (m_TimelineAsset != TimelineWindow.instance.state.editSequence.asset)
+                return false;
+            return base.IsEnabled();
+        }
+
+        void DrawTimeScale()
+        {
+            var inputEvent = InputEvent.None;
+            var newEndTime = m_SelectionInfo.end;
+            var oldTimeScale = m_TimeScaleProperty.doubleValue;
+
+            EditorGUI.BeginChangeCheck();
+            var newTimeScale = TimelineInspectorUtility.DelayedAndDraggableDoubleField(Styles.TimeScaleName, oldTimeScale, ref inputEvent, k_TimeScaleSensitivity);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                newTimeScale = newTimeScale.Clamp(TimelineClip.kTimeScaleMin, TimelineClip.kTimeScaleMax);
+                newEndTime = m_SelectionInfo.start + (m_SelectionInfo.duration * oldTimeScale / newTimeScale);
+            }
+            EditMode.inputHandler.ProcessTrim(inputEvent, newEndTime, true);
+        }
+
+        void DrawStartTimeField()
+        {
+            var inputEvent = InputEvent.None;
+            var newStart = TimelineInspectorUtility.TimeFieldUsingTimeReference(Styles.StartName, m_SelectionInfo.multipleClipStart, false, m_SelectionInfo.hasMultipleStartValues, currentFrameRate, 0.0, TimelineClip.kMaxTimeValue, ref inputEvent);
+
+            if (inputEvent.InputHasBegun() && m_SelectionInfo.hasMultipleStartValues)
+            {
+                var items = ItemsUtils.ToItems(m_SelectionInfo.clips);
+                EditMode.inputHandler.SetValueForEdge(items, AttractedEdge.Left, newStart); //if the field has multiple values, set the same start on all selected clips
+                m_SelectionInfo.Update(); //clips could have moved relative to each other, recalculate
+            }
+
+            EditMode.inputHandler.ProcessMove(inputEvent, newStart);
+        }
+
+        void DrawEndTimeField()
+        {
+            var inputEvent = InputEvent.None;
+            var newEndTime = TimelineInspectorUtility.TimeFieldUsingTimeReference(Styles.EndName, m_SelectionInfo.multipleClipEnd, false, m_SelectionInfo.hasMultipleEndValues, currentFrameRate, 0, TimelineClip.kMaxTimeValue, ref inputEvent);
+
+            if (inputEvent.InputHasBegun() && m_SelectionInfo.hasMultipleEndValues)
+            {
+                var items = ItemsUtils.ToItems(m_SelectionInfo.clips);
+                EditMode.inputHandler.SetValueForEdge(items, AttractedEdge.Right, newEndTime); //if the field has multiple value, set the same end on all selected clips
+                m_SelectionInfo.Update(); //clips could have moved relative to each other, recalculate
+            }
+
+            var newStartValue = m_SelectionInfo.multipleClipStart + (newEndTime - m_SelectionInfo.multipleClipEnd);
+            EditMode.inputHandler.ProcessMove(inputEvent, newStartValue);
+        }
+
+        void DrawClipAssetGui()
+        {
+            const float labelIndent = 34;
+            if (m_SelectedPlayableAssetsInspector == null)
+                return;
+
+            var rect = GUILayoutUtility.GetRect(GUIContent.none, EditorStyles.inspectorTitlebar);
+            var oldWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = rect.width - labelIndent;
+            m_IsClipAssetInspectorExpanded = EditorGUI.FoldoutTitlebar(rect, m_ClipAssetTitle, m_IsClipAssetInspectorExpanded, false);
+            EditorGUIUtility.labelWidth = oldWidth;
+            if (m_IsClipAssetInspectorExpanded)
+            {
+                EditorGUILayout.Space();
+                EditorGUI.indentLevel++;
+                ShowPlayableAssetInspector();
+                EditorGUI.indentLevel--;
+            }
+        }
+
+        void DrawExtrapolationOptions()
+        {
+            // PreExtrapolation
+            var preExtrapolationTime =  m_PreExtrapolationTimeProperty.doubleValue;
+            bool hasPreExtrap = preExtrapolationTime > 0.0;
+            if (hasPreExtrap)
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.PropertyField(m_PreExtrapolationModeProperty, Styles.PreExtrapolateLabel);
+                using (new GUIMixedValueScope(m_PreExtrapolationTimeProperty.hasMultipleDifferentValues))
+                    EditorGUILayout.DoubleField(preExtrapolationTime, EditorStyles.label);
+                EditorGUILayout.EndHorizontal();
+            }
+
+            // PostExtrapolation
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.PropertyField(m_PostExtrapolationModeProperty, Styles.PostExtrapolateLabel);
+                using (new GUIMixedValueScope(m_PostExtrapolationTimeProperty.hasMultipleDifferentValues))
+                    EditorGUILayout.DoubleField(m_PostExtrapolationTimeProperty.doubleValue, EditorStyles.label);
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        void OnDestroy()
+        {
+            DestroyImmediate(m_SelectedPlayableAssetsInspector);
+        }
+
+        public override GUIContent GetPreviewTitle()
+        {
+            return Styles.PreviewTitle;
+        }
+
+        public override bool HasPreviewGUI()
+        {
+            return m_PreviewCurveState != PreviewCurveState.None;
+        }
+
+        public override void OnInteractivePreviewGUI(Rect r, GUIStyle background)
+        {
+            if (m_PreviewCurveState != PreviewCurveState.None && m_ClipCurveEditor != null)
+            {
+                SetCurveEditorTrackHead();
+                m_ClipCurveEditor.OnGUI(r, m_CurvePresets);
+            }
+        }
+
+        void SetCurveEditorTrackHead()
+        {
+            if (TimelineWindow.instance == null || TimelineWindow.instance.state == null)
+                return;
+
+            if (hasMultipleSelection)
+                return;
+
+            var editorClip = target as EditorClip;
+            if (editorClip == null)
+                return;
+
+            var director = TimelineWindow.instance.state.editSequence.director;
+
+            if (director == null)
+                return;
+
+            m_ClipCurveEditor.trackTime = ClipInspectorCurveEditor.kDisableTrackTime;
+        }
+
+        void UnselectCurves()
+        {
+            if (Event.current.type == EventType.MouseDown)
+            {
+                if (m_ClipCurveEditor != null)
+                    m_ClipCurveEditor.SetUpdateCurveCallback(null);
+                m_PreviewCurveState = PreviewCurveState.None;
+            }
+        }
+
+        // Callback when the mixin/mixout properties are clicked on
+        void OnMixCurveSelected(string title, CurvePresetLibrary library, SerializedProperty curveSelected, bool easeIn)
+        {
+            m_PreviewCurveState = easeIn ? PreviewCurveState.MixIn : PreviewCurveState.MixOut;
+
+            m_CurvePresets = library;
+            var animationCurve = curveSelected.animationCurveValue;
+            m_ClipCurveEditor.headerString = title;
+            m_ClipCurveEditor.SetCurve(animationCurve);
+            m_ClipCurveEditor.SetSelected(animationCurve);
+            if (easeIn)
+                m_ClipCurveEditor.SetUpdateCurveCallback(MixInCurveUpdated);
+            else
+                m_ClipCurveEditor.SetUpdateCurveCallback(MixOutCurveUpdated);
+            Repaint();
+        }
+
+        // callback when the mix property is updated
+        void MixInCurveUpdated(AnimationCurve curve, EditorCurveBinding binding)
+        {
+            curve.keys = CurveEditUtility.SanitizeCurveKeys(curve.keys, true);
+            m_MixInCurveProperty.animationCurveValue = curve;
+            ApplyModifiedProperties();
+            var editorClip = target as EditorClip;
+            if (editorClip != null)
+                editorClip.lastHash = editorClip.GetHashCode();
+            RefreshCurves();
+        }
+
+        void MixOutCurveUpdated(AnimationCurve curve, EditorCurveBinding binding)
+        {
+            curve.keys = CurveEditUtility.SanitizeCurveKeys(curve.keys, false);
+            m_MixOutCurveProperty.animationCurveValue = curve;
+            ApplyModifiedProperties();
+            var editorClip = target as EditorClip;
+            if (editorClip != null)
+                editorClip.lastHash = editorClip.GetHashCode();
+            RefreshCurves();
+        }
+
+        void RefreshCurves()
+        {
+            AnimationCurvePreviewCache.ClearCache();
+            TimelineWindow.RepaintIfEditingTimelineAsset(m_TimelineAsset);
+            Repaint();
+        }
+
+        void DrawBlendCurve(GUIContent title, SerializedProperty modeProperty, SerializedProperty curveProperty, Action<SerializedProperty> onCurveClick)
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PropertyField(modeProperty, title);
+            if (hasMultipleSelection)
+            {
+                GUILayout.FlexibleSpace();
+            }
+            else
+            {
+                using (new EditorGUI.DisabledScope(modeProperty.intValue != (int)TimelineClip.BlendCurveMode.Manual))
+                {
+                    ClipInspectorCurveEditor.CurveField(GUIContent.none, curveProperty, onCurveClick);
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        void ShowPlayableAssetInspector()
+        {
+            if (!m_SelectionInfo.selectedAssetTypesAreHomogeneous)
+                return;
+
+            if (m_SelectedPlayableAssetsInspector != null)
+            {
+                foreach (var selectedItem in m_SelectionCache)
+                    CurvesOwnerInspectorHelper.PreparePlayableAsset(selectedItem);
+
+                EditorGUI.BeginChangeCheck();
+                using (new EditorGUI.DisabledScope(IsLocked()))
+                {
+                    m_SelectedPlayableAssetsInspector.OnInspectorGUI();
+                }
+                if (EditorGUI.EndChangeCheck())
+                {
+                    MarkClipsDirty();
+                    if (TimelineWindow.IsEditingTimelineAsset(m_TimelineAsset) && TimelineWindow.instance.state != null)
+                    {
+                        var basicInspector = m_SelectedPlayableAssetsInspector as BasicAssetInspector;
+                        if (basicInspector != null)
+                            basicInspector.ApplyChanges();
+                        else
+                            TimelineEditor.Refresh(RefreshReason.ContentsModified);
+                    }
+                }
+            }
+        }
+
+        void ApplyModifiedProperties()
+        {
+            // case 926861 - we need to force the track to be dirty since modifying the clip does not
+            //  automatically mark the track asset as dirty
+            if (serializedObject.ApplyModifiedProperties())
+            {
+                foreach (var obj in serializedObject.targetObjects)
+                {
+                    var editorClip = obj as EditorClip;
+                    if (editorClip != null && editorClip.clip != null && editorClip.clip.parentTrack != null)
+                    {
+                        editorClip.clip.MarkDirty();
+                        EditorUtility.SetDirty(editorClip.clip.parentTrack);
+                    }
+                }
+            }
+        }
+
+        void MarkClipsDirty()
+        {
+            foreach (var obj in targets)
+            {
+                var editorClip = obj as EditorClip;
+                if (editorClip != null && editorClip.clip != null)
+                {
+                    editorClip.clip.MarkDirty();
+                }
+            }
+        }
+
+        string PlayableAssetSectionTitle()
+        {
+            var firstSelectedClipAsset = m_SelectionCache.Any() ? m_SelectionCache.First().clip.asset : null;
+            return firstSelectedClipAsset != null
+                ? ObjectNames.NicifyVariableName(firstSelectedClipAsset.GetType().Name)
+                : string.Empty;
+        }
+
+        bool IsTimelineAssetValidForEditorClip(EditorClip editorClip)
+        {
+            var trackAsset = editorClip.clip.parentTrack;
+            if (trackAsset == null)
+                return false;
+
+            var clipTimelineAsset = trackAsset.timelineAsset;
+            if (m_TimelineAsset == null)
+                m_TimelineAsset = clipTimelineAsset;
+            else if (clipTimelineAsset != m_TimelineAsset)
+            {
+                m_TimelineAsset = null;
                 return false;
             }
-
-            return HasValidExtension(file);
+            return true;
         }
 
-        bool HasValidExtension(string file)
+        bool CanShowPlayableAssetInspector()
         {
-            string extension = Path.GetExtension(file);
+            if (hasMultipleSelection)
+                return m_SelectedPlayableAssetsInspector != null &&
+                    m_SelectedPlayableAssetsInspector.canEditMultipleObjects &&
+                    m_SelectionInfo.selectedAssetTypesAreHomogeneous;
+            else
+                return true;
+        }
 
-            // Dll's are not scripts but still need to be included..
-            if (extension == ".dll")
+        void DrawDurationProperty()
+        {
+            var minDuration = 1.0 / 30.0;
+            if (currentFrameRate > float.Epsilon)
+            {
+                minDuration = 1.0 / currentFrameRate;
+            }
+
+            var inputEvent = InputEvent.None;
+            var newDuration = TimelineInspectorUtility.DurationFieldUsingTimeReference(
+                Styles.DurationName, m_SelectionInfo.start, m_SelectionInfo.end, false, m_SelectionInfo.hasMultipleDurationValues, currentFrameRate, minDuration, TimelineClip.kMaxTimeValue, ref inputEvent);
+            EditMode.inputHandler.ProcessTrim(inputEvent, m_SelectionInfo.start + newDuration, false);
+        }
+
+        void DrawBlendingProperties()
+        {
+            const double mixMinimum = 0.0;
+            var useBlendIn = m_SelectionInfo.hasBlendIn;
+            var useBlendOut = m_SelectionInfo.hasBlendOut;
+
+            var currentMixInProperty = useBlendIn ? m_BlendInDurationProperty : m_EaseInDurationProperty;
+            var currentMixOutProperty = useBlendOut ? m_BlendOutDurationProperty : m_EaseOutDurationProperty;
+
+            var maxEaseIn = Math.Max(mixMinimum, m_SelectionInfo.maxMixIn);
+            var maxEaseOut = Math.Max(mixMinimum, m_SelectionInfo.maxMixOut);
+
+            var inputEvent = InputEvent.None;
+
+            var blendMax = useBlendIn ? TimelineClip.kMaxTimeValue : maxEaseIn;
+            var label = useBlendIn ? Styles.BlendInDurationName : Styles.EaseInDurationName;
+            TimelineInspectorUtility.TimeField(currentMixInProperty, label, useBlendIn, currentFrameRate, mixMinimum, blendMax, ref inputEvent);
+
+            blendMax = useBlendOut ? TimelineClip.kMaxTimeValue : maxEaseOut;
+            label = useBlendOut ? Styles.BlendOutDurationName : Styles.EaseOutDurationName;
+            TimelineInspectorUtility.TimeField(currentMixOutProperty, label, useBlendOut, currentFrameRate, mixMinimum, blendMax, ref inputEvent);
+        }
+
+        void DrawClipInProperty()
+        {
+            var action = InputEvent.None;
+            TimelineInspectorUtility.TimeField(m_ClipInProperty, Styles.ClipInName, false, currentFrameRate, 0, TimelineClip.kMaxTimeValue, ref action);
+        }
+
+        void DrawBlendOptions()
+        {
+            EditorGUI.BeginChangeCheck();
+
+            DrawBlendCurve(Styles.BlendInCurveName, m_BlendInCurveModeProperty, m_MixInCurveProperty, x => OnMixCurveSelected("Blend In", BuiltInPresets.blendInPresets, x, true));
+            DrawBlendCurve(Styles.BlendOutCurveName, m_BlendOutCurveModeProperty, m_MixOutCurveProperty, x => OnMixCurveSelected("Blend Out", BuiltInPresets.blendOutPresets, x, false));
+
+            if (EditorGUI.EndChangeCheck())
+                TimelineWindow.RepaintIfEditingTimelineAsset(m_TimelineAsset);
+        }
+
+        void DrawGroupSelectionProperties()
+        {
+            var inputEvent = InputEvent.None;
+            var newStartTime = TimelineInspectorUtility.TimeField(Styles.MultipleClipStartName, m_SelectionInfo.multipleClipStart, false, false, currentFrameRate, 0, TimelineClip.kMaxTimeValue, ref inputEvent);
+            EditMode.inputHandler.ProcessMove(inputEvent, newStartTime);
+
+            inputEvent = InputEvent.None;
+            var newEndTime = TimelineInspectorUtility.TimeField(Styles.MultipleClipEndName, m_SelectionInfo.multipleClipEnd, false, false, currentFrameRate, 0, TimelineClip.kMaxTimeValue, ref inputEvent);
+            var newStartValue = newStartTime + (newEndTime - m_SelectionInfo.multipleClipEnd);
+            EditMode.inputHandler.ProcessMove(inputEvent, newStartValue);
+        }
+
+        bool IsLocked()
+        {
+            if (!TimelineUtility.IsCurrentSequenceValid() || IsCurrentSequenceReadOnly())
                 return true;
 
-            if (file.ToLower().EndsWith(".asmdef"))
-                return true;
-
-            return IsSupportedExtension(extension);
+            return targets.OfType<EditorClip>().Any(t => t.clip.parentTrack != null && t.clip.parentTrack.lockedInHierarchy);
         }
 
-        bool IsSupportedExtension(string extension)
+        static bool IsCurrentSequenceReadOnly()
         {
-            extension = extension.TrimStart('.');
-            if (k_BuiltinSupportedExtensions.ContainsKey(extension))
-                return true;
-            if (m_ProjectSupportedExtensions.Contains(extension))
-                return true;
-            return false;
+            return TimelineWindow.instance.state.editSequence.isReadOnly;
         }
 
-        static ScriptingLanguage ScriptingLanguageFor(Assembly assembly)
+        void OnUndoRedoPerformed()
         {
-            return ScriptingLanguageFor(GetExtensionOfSourceFiles(assembly.sourceFiles));
-        }
+            if (m_PreviewCurveState == PreviewCurveState.None)
+                return;
 
-        static string GetExtensionOfSourceFiles(string[] files)
-        {
-            return files.Length > 0 ? GetExtensionOfSourceFile(files[0]) : "NA";
-        }
-
-        static string GetExtensionOfSourceFile(string file)
-        {
-            var ext = Path.GetExtension(file).ToLower();
-            ext = ext.Substring(1); //strip dot
-            return ext;
-        }
-
-        static ScriptingLanguage ScriptingLanguageFor(string extension)
-        {
-            return k_BuiltinSupportedExtensions.TryGetValue(extension.TrimStart('.'), out var result)
-                ? result
-                : ScriptingLanguage.None;
-        }
-
-        public void GenerateAndWriteSolutionAndProjects()
-        {
-            // Only synchronize assemblies that have associated source files and ones that we actually want in the project.
-            // This also filters out DLLs coming from .asmdef files in packages.
-            var assemblies = m_AssemblyNameProvider.GetAssemblies(ShouldFileBePartOfSolution);
-
-            var allAssetProjectParts = GenerateAllAssetProjectParts();
-
-            SyncSolution(assemblies);
-            var allProjectAssemblies = RelevantAssembliesForMode(assemblies).ToList();
-            var assemblyNames = new HashSet<string>(allProjectAssemblies.Select(assembly => Path.GetFileName(assembly.outputPath)));
-            foreach (Assembly assembly in allProjectAssemblies)
+            // if an undo is performed the curves need to be updated in the curve editor, as the reference to them is no longer valid
+            // case 978673
+            if (m_ClipCurveEditor != null)
             {
-                var responseFileData = ParseResponseFileData(assembly);
-                SyncProject(assembly, allAssetProjectParts, responseFileData, assemblyNames);
+                serializedObject.Update();
+                m_ClipCurveEditor.SetCurve(m_PreviewCurveState == PreviewCurveState.MixIn ? m_MixInCurveProperty.animationCurveValue : m_MixOutCurveProperty.animationCurveValue);
             }
-
-            WriteVSCodeSettingsFiles();
         }
 
-        List<ResponseFileData> ParseResponseFileData(Assembly assembly)
-        {
-            var systemReferenceDirectories = CompilationPipeline.GetSystemAssemblyDirectories(assembly.compilerOptions.ApiCompatibilityLevel);
-
-            Dictionary<string, ResponseFileData> responseFilesData = assembly.compilerOptions.ResponseFiles.ToDictionary(x => x, x => m_AssemblyNameProvider.ParseResponseFile(
-                x,
-                ProjectDirectory,
-                systemReferenceDirectories
-            ));
-
-            Dictionary<string, ResponseFileData> responseFilesWithErrors = responseFilesData.Where(x => x.Value.Errors.Any())
-                .ToDictionary(x => x.Key, x => x.Value);
-
-            if (responseFilesWithErrors.Any())
-            {
-                foreach (var error in responseFilesWithErrors)
-                foreach (var valueError in error.Value.Errors)
-                {
-                    Debug.LogError($"{error.Key} Parse Error : {valueError}");
-                }
-            }
-
-            return responseFilesData.Select(x => x.Value).ToList();
-        }
-
-        Dictionary<string, string> GenerateAllAssetProjectParts()
-        {
-            Dictionary<string, StringBuilder> stringBuilders = new Dictionary<string, StringBuilder>();
-
-            foreach (string asset in m_AssemblyNameProvider.GetAllAssetPaths())
-            {
-                // Exclude files coming from packages except if they are internalized.
-                // TODO: We need assets from the assembly API
-                if (m_AssemblyNameProvider.IsInternalizedPackagePath(asset))
-                {
-                    continue;
-                }
-
-                string extension = Path.GetExtension(asset);
-                if (IsSupportedExtension(extension) && ScriptingLanguage.None == ScriptingLanguageFor(extension))
-                {
-                    // Find assembly the asset belongs to by adding script extension and using compilation pipeline.
-                    var assemblyName = m_AssemblyNameProvider.GetAssemblyNameFromScriptPath(asset);
-
-                    if (string.IsNullOrEmpty(assemblyName))
-                    {
-                        continue;
-                    }
-
-                    assemblyName = Path.GetFileNameWithoutExtension(assemblyName);
-
-                    if (!stringBuilders.TryGetValue(assemblyName, out var projectBuilder))
-                    {
-                        projectBuilder = new StringBuilder();
-                        stringBuilders[assemblyName] = projectBuilder;
-                    }
-
-                    projectBuilder.Append("     <None Include=\"").Append(EscapedRelativePathFor(asset)).Append("\" />").Append(k_WindowsNewline);
-                }
-            }
-
-            var result = new Dictionary<string, string>();
-
-            foreach (var entry in stringBuilders)
-                result[entry.Key] = entry.Value.ToString();
-
-            return result;
-        }
-
-        void SyncProject(
-            Assembly assembly,
-            Dictionary<string, string> allAssetsProjectParts,
-            List<ResponseFileData> responseFilesData,
-            HashSet<string> assemblyNames)
-        {
-            SyncProjectFileIfNotChanged(ProjectFile(assembly), ProjectText(assembly, allAssetsProjectParts, responseFilesData, assemblyNames, GetAllRoslynAnalyzerPaths().ToArray()));
-        }
-
-        private IEnumerable<string> GetAllRoslynAnalyzerPaths()
-        {
-            return m_AssemblyNameProvider.GetRoslynAnalyzerPaths();
-        }
-
-        void SyncProjectFileIfNotChanged(string path, string newContents)
-        {
-            SyncFileIfNotChanged(path, newContents);
-        }
-
-        void SyncSolutionFileIfNotChanged(string path, string newContents)
-        {
-            SyncFileIfNotChanged(path, newContents);
-        }
-
-        void SyncFileIfNotChanged(string filename, string newContents)
-        {
-            if (m_FileIOProvider.Exists(filename))
-            {
-                var currentContents = m_FileIOProvider.ReadAllText(filename);
-
-                if (currentContents == newContents)
-                {
-                    return;
-                }
-            }
-
-            m_FileIOProvider.WriteAllText(filename, newContents);
-        }
-
-        string ProjectText(
-            Assembly assembly,
-            Dictionary<string, string> allAssetsProjectParts,
-            List<ResponseFileData> responseFilesData,
-            HashSet<string> assemblyNames,
-            string[] roslynAnalyzerDllPaths)
-        {
-            var projectBuilder = new StringBuilder();
-            ProjectHeader(assembly, responseFilesData, roslynAnalyzerDllPaths, projectBuilder);
-            var references = new List<string>();
-
-            foreach (string file in assembly.sourceFiles)
-            {
-                if (!HasValidExtension(file))
-                    continue;
-
-                var extension = Path.GetExtension(file).ToLower();
-                var fullFile = EscapedRelativePathFor(file);
-                if (".dll" != extension)
-                {
-                    projectBuilder.Append("     <Compile Include=\"").Append(fullFile).Append("\" />").Append(k_WindowsNewline);
-                }
-                else
-                {
-                    references.Add(fullFile);
-                }
-            }
-
-            // Append additional non-script files that should be included in project generation.
-            if (allAssetsProjectParts.TryGetValue(assembly.name, out var additionalAssetsForProject))
-                projectBuilder.Append(additionalAssetsForProject);
-
-            var responseRefs = responseFilesData.SelectMany(x => x.FullPathReferences.Select(r => r));
-            var internalAssemblyReferences = assembly.assemblyReferences
-              .Where(i => !i.sourceFiles.Any(ShouldFileBePartOfSolution)).Select(i => i.outputPath);
-            var allReferences =
-              assembly.compiledAssemblyReferences
-                .Union(responseRefs)
-                .Union(references)
-                .Union(internalAssemblyReferences)
-                .Except(roslynAnalyzerDllPaths);
-
-            foreach (var reference in allReferences)
-            {
-                string fullReference = Path.IsPathRooted(reference) ? reference : Path.Combine(ProjectDirectory, reference);
-                AppendReference(fullReference, projectBuilder);
-            }
-
-            if (0 < assembly.assemblyReferences.Length)
-            {
-                projectBuilder.Append("  </ItemGroup>").Append(k_WindowsNewline);
-                projectBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
-                foreach (Assembly reference in assembly.assemblyReferences.Where(i => i.sourceFiles.Any(ShouldFileBePartOfSolution)))
-                {
-                    var referencedProject = reference.outputPath;
-
-                    projectBuilder.Append("    <ProjectReference Include=\"").Append(reference.name).Append(GetProjectExtension()).Append("\">").Append(k_WindowsNewline);
-                    projectBuilder.Append("      <Project>{").Append(ProjectGuid(reference.name)).Append("}</Project>").Append(k_WindowsNewline);
-                    projectBuilder.Append("      <Name>").Append(reference.name).Append("</Name>").Append(k_WindowsNewline);
-                    projectBuilder.Append("    </ProjectReference>").Append(k_WindowsNewline);
-                }
-            }
-
-            projectBuilder.Append(ProjectFooter());
-            return projectBuilder.ToString();
-        }
-
-        static void AppendReference(string fullReference, StringBuilder projectBuilder)
-        {
-            //replace \ with / and \\ with /
-            var escapedFullPath = SecurityElement.Escape(fullReference);
-            escapedFullPath = escapedFullPath.Replace("\\\\", "/");
-            escapedFullPath = escapedFullPath.Replace("\\", "/");
-            projectBuilder.Append("    <Reference Include=\"").Append(Path.GetFileNameWithoutExtension(escapedFullPath)).Append("\">").Append(k_WindowsNewline);
-            projectBuilder.Append("        <HintPath>").Append(escapedFullPath).Append("</HintPath>").Append(k_WindowsNewline);
-            projectBuilder.Append("    </Reference>").Append(k_WindowsNewline);
-        }
-
-        public string ProjectFile(Assembly assembly)
-        {
-            var fileBuilder = new StringBuilder(assembly.name);
-            fileBuilder.Append(".csproj");
-            return Path.Combine(ProjectDirectory, fileBuilder.ToString());
-        }
-
-        public string SolutionFile()
-        {
-            return Path.Combine(ProjectDirectory, $"{m_ProjectName}.sln");
-        }
-
-        void ProjectHeader(
-            Assembly assembly,
-            List<ResponseFileData> responseFilesData,
-            string[] roslynAnalyzerDllPaths,
-            StringBuilder builder
-        )
-        {
-            var otherArguments = GetOtherArgumentsFromResponseFilesData(responseFilesData);
-            GetProjectHeaderTemplate(
-                builder,
-                ProjectGuid(assembly.name),
-                assembly.name,
-                string.Join(";", new[] { "DEBUG", "TRACE" }.Concat(assembly.defines).Concat(responseFilesData.SelectMany(x => x.Defines)).Concat(EditorUserBuildSettings.activeScriptCompilationDefines).Distinct().ToArray()),
-                assembly.compilerOptions.AllowUnsafeCode | responseFilesData.Any(x => x.Unsafe),
-                GenerateAnalyserItemGroup(otherArguments["analyzer"].Concat(otherArguments["a"])
-                    .SelectMany(x => x.Split(';'))
-                    .Concat(roslynAnalyzerDllPaths)
-                    .Distinct()
-                    .ToArray()));
-        }
-
-        private static ILookup<string, string> GetOtherArgumentsFromResponseFilesData(List<ResponseFileData> responseFilesData)
-        {
-            var paths = responseFilesData.SelectMany(x =>
-                {
-                    return x.OtherArguments.Where(a => a.StartsWith("/") || a.StartsWith("-"))
-                                           .Select(b =>
-                    {
-                        var index = b.IndexOf(":", StringComparison.Ordinal);
-                        if (index > 0 && b.Length > index)
-                        {
-                            var key = b.Substring(1, index - 1);
-                            return new KeyValuePair<string, string>(key, b.Substring(index + 1));
-                        }
-
-                        const string warnaserror = "warnaserror";
-                        if (b.Substring(1).StartsWith(warnaserror))
-                        {
-                            return new KeyValuePair<string, string>(warnaserror, b.Substring(warnaserror.Length + 1));
-                        }
-
-                        return default;
-                    });
-                })
-              .Distinct()
-              .ToLookup(o => o.Key, pair => pair.Value);
-            return paths;
-        }
-
-        private static string GenerateAnalyserItemGroup(string[] paths)
-        {
-            //    <ItemGroup>
-            //        <Analyzer Include="..\packages\Comments_analyser.1.0.6626.21356\analyzers\dotnet\cs\Comments_analyser.dll" />
-            //        <Analyzer Include="..\packages\UnityEngineAnalyzer.1.0.0.0\analyzers\dotnet\cs\UnityEngineAnalyzer.dll" />
-            //    </ItemGroup>
-            if (!paths.Any())
-                return string.Empty;
-
-            var analyserBuilder = new StringBuilder();
-            analyserBuilder.Append("  <ItemGroup>").Append(k_WindowsNewline);
-            foreach (var path in paths)
-            {
-                analyserBuilder.Append($"    <Analyzer Include=\"{path}\" />").Append(k_WindowsNewline);
-            }
-            analyserBuilder.Append("  </ItemGroup>").Append(k_WindowsNewline);
-            return analyserBuilder.ToString();
-        }
-
-        static string GetSolutionText()
-        {
-            return string.Join("\r\n", @"", @"Microsoft Visual Studio Solution File, Format Version {0}", @"# Visual Studio {1}", @"{2}", @"Global", @"    GlobalSection(SolutionConfigurationPlatforms) = preSolution", @"        Debug|Any CPU = Debug|Any CPU", @"    EndGlobalSection", @"    GlobalSection(ProjectConfigurationPlatforms) = postSolution", @"{3}", @"    EndGlobalSection", @"    GlobalSection(SolutionProperties) = preSolution", @"        HideSolutionNode = FALSE", @"    EndGlobalSection", @"EndGlobal", @"").Replace("    ", "\t");
-        }
-
-        static string GetProjectFooterTemplate()
-        {
-            return string.Join("\r\n", @"  </ItemGroup>", @"  <Import Project=""$(MSBuildToolsPath)\Microsoft.CSharp.targets"" />", @"  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.", @"       Other similar extension points exist, see Microsoft.Common.targets.", @"  <Target Name=""BeforeBuild"">", @"  </Target>", @"  <Target Name=""AfterBuild"">", @"  </Target>", @"  -->", @"</Project>", @"");
-        }
-
-        static void GetProjectHeaderTemplate(
-            StringBuilder builder,
-            string assemblyGUID,
-            string assemblyName,
-            string defines,
-            bool allowUnsafe,
-            string analyzerBlock
-        )
-        {
-            builder.Append(@"<?xml version=""1.0"" encoding=""utf-8""?>").Append(k_WindowsNewline);
-            builder.Append(@"<Project ToolsVersion=""").Append(k_ToolsVersion).Append(@""" DefaultTargets=""Build"" xmlns=""").Append(MSBuildNamespaceUri).Append(@""">").Append(k_WindowsNewline);
-            builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"    <LangVersion>").Append(k_TargetLanguageVersion).Append("</LangVersion>").Append(k_WindowsNewline);
-            builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"    <Configuration Condition="" '$(Configuration)' == '' "">Debug</Configuration>").Append(k_WindowsNewline);
-            builder.Append(@"    <Platform Condition="" '$(Platform)' == '' "">AnyCPU</Platform>").Append(k_WindowsNewline);
-            builder.Append(@"    <ProductVersion>").Append(k_ProductVersion).Append("</ProductVersion>").Append(k_WindowsNewline);
-            builder.Append(@"    <SchemaVersion>2.0</SchemaVersion>").Append(k_WindowsNewline);
-            builder.Append(@"    <RootNamespace>").Append(EditorSettings.projectGenerationRootNamespace).Append("</RootNamespace>").Append(k_WindowsNewline);
-            builder.Append(@"    <ProjectGuid>{").Append(assemblyGUID).Append("}</ProjectGuid>").Append(k_WindowsNewline);
-            builder.Append(@"    <OutputType>Library</OutputType>").Append(k_WindowsNewline);
-            builder.Append(@"    <AppDesignerFolder>Properties</AppDesignerFolder>").Append(k_WindowsNewline);
-            builder.Append(@"    <AssemblyName>").Append(assemblyName).Append("</AssemblyName>").Append(k_WindowsNewline);
-            builder.Append(@"    <TargetFrameworkVersion>").Append(k_TargetFrameworkVersion).Append("</TargetFrameworkVersion>").Append(k_WindowsNewline);
-            builder.Append(@"    <FileAlignment>512</FileAlignment>").Append(k_WindowsNewline);
-            builder.Append(@"    <BaseDirectory>").Append(k_BaseDirectory).Append("</BaseDirectory>").Append(k_WindowsNewline);
-            builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"  <PropertyGroup Condition="" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "">").Append(k_WindowsNewline);
-            builder.Append(@"    <DebugSymbols>true</DebugSymbols>").Append(k_WindowsNewline);
-            builder.Append(@"    <DebugType>full</DebugType>").Append(k_WindowsNewline);
-            builder.Append(@"    <Optimize>false</Optimize>").Append(k_WindowsNewline);
-            builder.Append(@"    <OutputPath>Temp\bin\Debug\</OutputPath>").Append(k_WindowsNewline);
-            builder.Append(@"    <DefineConstants>").Append(defines).Append("</DefineConstants>").Append(k_WindowsNewline);
-            builder.Append(@"    <ErrorReport>prompt</ErrorReport>").Append(k_WindowsNewline);
-            builder.Append(@"    <WarningLevel>4</WarningLevel>").Append(k_WindowsNewline);
-            builder.Append(@"    <NoWarn>0169</NoWarn>").Append(k_WindowsNewline);
-            builder.Append(@"    <AllowUnsafeBlocks>").Append(allowUnsafe).Append("</AllowUnsafeBlocks>").Append(k_WindowsNewline);
-            builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"  <PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(@"    <NoConfig>true</NoConfig>").Append(k_WindowsNewline);
-            builder.Append(@"    <NoStdLib>true</NoStdLib>").Append(k_WindowsNewline);
-            builder.Append(@"    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>").Append(k_WindowsNewline);
-            builder.Append(@"    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>").Append(k_WindowsNewline);
-            builder.Append(@"    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>").Append(k_WindowsNewline);
-            builder.Append(@"  </PropertyGroup>").Append(k_WindowsNewline);
-            builder.Append(analyzerBlock);
-            builder.Append(@"  <ItemGroup>").Append(k_WindowsNewline);
-        }
-
-        void SyncSolution(IEnumerable<Assembly> assemblies)
-        {
-            SyncSolutionFileIfNotChanged(SolutionFile(), SolutionText(assemblies));
-        }
-
-        string SolutionText(IEnumerable<Assembly> assemblies)
-        {
-            var fileversion = "11.00";
-            var vsversion = "2010";
-
-            var relevantAssemblies = RelevantAssembliesForMode(assemblies);
-            string projectEntries = GetProjectEntries(relevantAssemblies);
-            string projectConfigurations = string.Join(k_WindowsNewline, relevantAssemblies.Select(i => GetProjectActiveConfigurations(ProjectGuid(i.name))).ToArray());
-            return string.Format(GetSolutionText(), fileversion, vsversion, projectEntries, projectConfigurations);
-        }
-
-        static IEnumerable<Assembly> RelevantAssembliesForMode(IEnumerable<Assembly> assemblies)
-        {
-            return assemblies.Where(i => ScriptingLanguage.CSharp == ScriptingLanguageFor(i));
-        }
-
-        /// <summary>
-        /// Get a Project("{guid}") = "MyProject", "MyProject.csproj", "{projectguid}"
-        /// entry for each relevant language
-        /// </summary>
-        string GetProjectEntries(IEnumerable<Assembly> assemblies)
-        {
-            var projectEntries = assemblies.Select(i => string.Format(
-                m_SolutionProjectEntryTemplate,
-                SolutionGuid(i),
-                i.name,
-                Path.GetFileName(ProjectFile(i)),
-                ProjectGuid(i.name)
-            ));
-
-            return string.Join(k_WindowsNewline, projectEntries.ToArray());
-        }
-
-        /// <summary>
-        /// Generate the active configuration string for a given project guid
-        /// </summary>
-        string GetProjectActiveConfigurations(string projectGuid)
-        {
-            return string.Format(
-                m_SolutionProjectConfigurationTemplate,
-                projectGuid);
-        }
-
-        string EscapedRelativePathFor(string file)
-        {
-            var projectDir = ProjectDirectory.Replace('/', '\\');
-            file = file.Replace('/', '\\');
-            var path = SkipPathPrefix(file, projectDir);
-
-            var packageInfo = m_AssemblyNameProvider.FindForAssetPath(path.Replace('\\', '/'));
-            if (packageInfo != null)
-            {
-                // We have to normalize the path, because the PackageManagerRemapper assumes
-                // dir seperators will be os specific.
-                var absolutePath = Path.GetFullPath(NormalizePath(path)).Replace('/', '\\');
-                path = SkipPathPrefix(absolutePath, projectDir);
-            }
-
-            return SecurityElement.Escape(path);
-        }
-
-        static string SkipPathPrefix(string path, string prefix)
-        {
-            if (path.StartsWith($@"{prefix}\"))
-                return path.Substring(prefix.Length + 1);
-            return path;
-        }
-
-        static string NormalizePath(string path)
-        {
-            if (Path.DirectorySeparatorChar == '\\')
-                return path.Replace('/', Path.DirectorySeparatorChar);
-            return path.Replace('\\', Path.DirectorySeparatorChar);
-        }
-
-        string ProjectGuid(string assembly)
-        {
-            return m_GUIDProvider.ProjectGuid(m_ProjectName, assembly);
-        }
-
-        string SolutionGuid(Assembly assembly)
-        {
-            return m_GUIDProvider.SolutionGuid(m_ProjectName, GetExtensionOfSourceFiles(assembly.sourceFiles));
-        }
-
-        static string ProjectFooter()
-        {
-            return GetProjectFooterTemplate();
-        }
-
-        static string GetProjectExtension()
-        {
-            return ".csproj";
-        }
-
-        void WriteVSCodeSettingsFiles()
-        {
-            var vsCodeDirectory = Path.Combine(ProjectDirectory, ".vscode");
-
-            if (!m_FileIOProvider.Exists(vsCodeDirectory))
-                m_FileIOProvider.CreateDirectory(vsCodeDirectory);
-
-            var vsCodeSettingsJson = Path.Combine(vsCodeDirectory, "settings.json");
-
-            if (!m_FileIOProvider.Exists(vsCodeSettingsJson))
-                m_FileIOProvider.WriteAllText(vsCodeSettingsJson, k_SettingsJson);
-        }
     }
-
-    public static class SolutionGuidGenerator
-    {
-        static MD5 mD5 = MD5CryptoServiceProvider.Create();
-
-        public static string GuidForProject(string projectName)
-        {
-            return ComputeGuidHashFor(projectName + "salt");
-        }
-
-        public static string GuidForSolution(string projectName, string sourceFileExtension)
-        {
-            if (sourceFileExtension.ToLower() == "cs")
-
-                // GUID for a C# class library: http://www.codeproject.com/Reference/720512/List-of-Visual-Studio-Project-Type-GUIDs
-                return "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC";
-
-            return ComputeGuidHashFor(projectName);
-        }
-
-        static string Comp
+}

@@ -1,96 +1,98 @@
-using System;
-using System.IO;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
-using System.Diagnostics;
-using UnityEditor;
-using UnityEngine;
-using Unity.CodeEditor;
+using System.Reflection;
+using NUnit;
+using NUnit.Framework.Interfaces;
+using NUnit.Framework.Internal;
+using UnityEngine.TestTools;
+using UnityEngine.TestTools.NUnitExtensions;
 
-namespace VSCodeEditor
+namespace UnityEngine.TestRunner.NUnitExtensions.Runner
 {
-    [InitializeOnLoad]
-    public class VSCodeScriptEditor : IExternalCodeEditor
+    internal interface IUnityTestAssemblyRunner
     {
-        const string vscode_argument = "vscode_arguments";
-        const string vscode_extension = "vscode_userExtensions";
-        static readonly GUIContent k_ResetArguments = EditorGUIUtility.TrTextContent("Reset argument");
-        string m_Arguments;
+        ITest LoadedTest { get; }
+        ITestResult Result { get; }
+        bool IsTestLoaded { get; }
+        bool IsTestRunning { get; }
+        bool IsTestComplete { get; }
+        UnityWorkItem TopLevelWorkItem { get; set; }
+        UnityTestExecutionContext GetCurrentContext();
+        ITest Load(Assembly[] assemblies, TestPlatform testPlatform, IDictionary<string, object> settings);
+        IEnumerable Run(ITestListener listener, ITestFilter filter);
+        void StopRun();
+    }
 
-        IDiscovery m_Discoverability;
-        IGenerator m_ProjectGeneration;
+    internal class UnityTestAssemblyRunner : IUnityTestAssemblyRunner
+    {
+        private readonly UnityTestAssemblyBuilder unityBuilder;
+        private readonly WorkItemFactory m_Factory;
 
-        static readonly string[] k_SupportedFileNames = { "code.exe", "visualstudiocode.app", "visualstudiocode-insiders.app", "vscode.app", "code.app", "code.cmd", "code-insiders.cmd", "code", "com.visualstudio.code" };
+        protected UnityTestExecutionContext Context { get; set; }
 
-        static bool IsOSX => Application.platform == RuntimePlatform.OSXEditor;
-
-        static string DefaultApp => EditorPrefs.GetString("kScriptsDefaultApp");
-
-        static string DefaultArgument { get; } = "\"$(ProjectPath)\" -g \"$(File)\":$(Line):$(Column)";
-
-        string Arguments
+        public UnityTestExecutionContext GetCurrentContext()
         {
-            get => m_Arguments ?? (m_Arguments = EditorPrefs.GetString(vscode_argument, DefaultArgument));
-            set
-            {
-                m_Arguments = value;
-                EditorPrefs.SetString(vscode_argument, value);
-            }
+            return UnityTestExecutionContext.CurrentContext;
         }
 
-        static string[] defaultExtensions
+        protected IDictionary<string, object> Settings { get; set; }
+        public ITest LoadedTest { get; protected set; }
+
+        public ITestResult Result
         {
-            get
-            {
-                var customExtensions = new[] { "json", "asmdef", "log" };
-                return EditorSettings.projectGenerationBuiltinExtensions
-                    .Concat(EditorSettings.projectGenerationUserExtensions)
-                    .Concat(customExtensions)
-                    .Distinct().ToArray();
-            }
+            get { return TopLevelWorkItem == null ? null : TopLevelWorkItem.Result; }
         }
 
-        static string[] HandledExtensions
+        public bool IsTestLoaded
         {
-            get
-            {
-                return HandledExtensionsString
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => s.TrimStart('.', '*'))
-                    .ToArray();
-            }
+            get { return LoadedTest != null; }
         }
 
-        static string HandledExtensionsString
+        public bool IsTestRunning
         {
-            get => EditorPrefs.GetString(vscode_extension, string.Join(";", defaultExtensions));
-            set => EditorPrefs.SetString(vscode_extension, value);
+            get { return TopLevelWorkItem != null && TopLevelWorkItem.State == NUnit.Framework.Internal.Execution.WorkItemState.Running; }
+        }
+        public bool IsTestComplete
+        {
+            get { return TopLevelWorkItem != null && TopLevelWorkItem.State == NUnit.Framework.Internal.Execution.WorkItemState.Complete; }
         }
 
-        public bool TryGetInstallationForPath(string editorPath, out CodeEditor.Installation installation)
+        public UnityTestAssemblyRunner(UnityTestAssemblyBuilder builder, WorkItemFactory factory)
         {
-            var lowerCasePath = editorPath.ToLower();
-            var filename = Path.GetFileName(lowerCasePath).Replace(" ", "");
-            var installations = Installations;
-            if (!k_SupportedFileNames.Contains(filename))
-            {
-                installation = default;
-                return false;
-            }
+            unityBuilder = builder;
+            m_Factory = factory;
+            Context = new UnityTestExecutionContext();
+        }
 
-            if (!installations.Any())
+        public ITest Load(Assembly[] assemblies, TestPlatform testPlatform, IDictionary<string, object> settings)
+        {
+            Settings = settings;
+
+            if (settings.ContainsKey(FrameworkPackageSettings.RandomSeed))
+                Randomizer.InitialSeed = (int)settings[FrameworkPackageSettings.RandomSeed];
+
+            return LoadedTest = unityBuilder.Build(assemblies, Enumerable.Repeat(testPlatform, assemblies.Length).ToArray(), settings);
+        }
+
+        public IEnumerable Run(ITestListener listener, ITestFilter filter)
+        {
+            TopLevelWorkItem = m_Factory.Create(LoadedTest, filter);
+            TopLevelWorkItem.InitializeContext(Context);
+            UnityTestExecutionContext.CurrentContext = Context;
+            Context.Listener = listener;
+
+            return TopLevelWorkItem.Execute();
+        }
+
+        public UnityWorkItem TopLevelWorkItem { get; set; }
+
+        public void StopRun()
+        {
+            if (IsTestRunning)
             {
-                installation = new CodeEditor.Installation
-                {
-                    Name = "Visual Studio Code",
-                    Path = editorPath
-                };
+                TopLevelWorkItem.Cancel(false);
             }
-            else
-            {
-                try
-                {
-                    installation = installations.First(inst => inst.Path == editorPath);
-                }
-                catch (InvalidOperationException)
-                {
-                    installation = new CodeEditor.Ins
+        }
+    }
+}

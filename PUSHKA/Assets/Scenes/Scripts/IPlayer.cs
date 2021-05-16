@@ -4,5 +4,5 @@ using UnityEngine;
 
 public interface IPlayer
 { 
-    void TakeDamage(double damage);
-}
+     void TakeDamage(double damage);
+ }

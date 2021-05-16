@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 5539090752534720992}
   - component: {fileID: 5539090752534720993}
   - component: {fileID: 5539090752534720998}
+  - component: {fileID: 953233381912456195}
   m_Layer: 8
   m_Name: Zombie
   m_TagString: Zombie
@@ -150,3 +151,19 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 4
+--- !u!58 &953233381912456195
+CircleCollider2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5539090752534720999}
+  m_Enabled: 1
+  m_Density: 1
+  m_Material: {fileID: 0}
+  m_IsTrigger: 1
+  m_UsedByEffector: 0
+  m_UsedByComposite: 0
+  m_Offset: {x: 0, y: 0}
+  serializedVersion: 2
+  m_Radius: 1

@@ -1,58 +1,83 @@
-# Code Editor Package for Visual Studio Code
-
-## [1.2.3] - 2020-10-23
-
-Remove workaround for VSCode omnisharp (as of https://github.com/OmniSharp/omnisharp-vscode/issues/4113 we no longer need to disable the referenceoutputassemblies).
-
-
-## [1.2.2] - 2020-09-04
-
-VSC-14 - synchronize solution file when adding new assembly
-
-
-## [1.2.1] - 2020-05-15
-
-Source filtering adds support for asmref
-
-
-## [1.2.0] - 2020-03-04
-
-Do not reference projects that has not been generated (case 1211057)
-Only open files that exists (case 1188394)
-Add individual toggle buttons for generating csprojects for packages
-Add support for Roslyn analyzers in project generation through csc.rsp and compiled assembly references
-Remove Release build target from csproj and sln
-
-
-## [1.1.4] - 2020-01-02
-
-Delta project generation, only recompute the csproj files whose script modified.
-
-
-## [1.1.3] - 2019-10-22
-
-Exe version of vscode will use Normal ProcessWindowStyle while cmd will use Hidden
-
-
-## [1.1.2] - 2019-08-30
-
-Fixing OSX open command arguments
-
-
-## [1.1.1] - 2019-08-19
-
-Support for Player Project. Generates specific csproj files containing files, reference, defines,
-etc. that will show how the assembly will be compiled for a target platform.
-
-
-## [1.1.0] - 2019-08-07
-
-Adds support for choosing extensions to be opened with VSCode. This can be done through the GUI in Preferences.
-Avoids opening all extensions after the change in core unity.
-
-
-## [1.0.7] - 2019-05-15
-
-Fix various OSX specific issues.
-Generate project on load if they are not generated.
-Fix pat
+fileFormatVersion: 2
+guid: 780f94cfcb317444289dc159309d8b07
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      '': Any
+    second:
+      enabled: 0
+      settings:
+        Exclude Editor: 0
+        Exclude Linux: 1
+        Exclude Linux64: 1
+        Exclude LinuxUniversal: 1
+        Exclude OSXUniversal: 1
+        Exclude Win: 1
+        Exclude Win64: 1
+  - first:
+      Any: 
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 1
+      settings:
+        CPU: x86_64
+        DefaultValueInitialized: true
+        OS: Windows
+  - first:
+      Facebook: Win
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Facebook: Win64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Linux
+    second:
+      enabled: 0
+      settings:
+        CPU: x86
+  - first:
+      Standalone: Linux64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: OSXUniversal
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Win
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  - first:
+      Standalone: Win64
+    second:
+      enabled: 0
+      settings:
+        CPU: AnyCPU
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

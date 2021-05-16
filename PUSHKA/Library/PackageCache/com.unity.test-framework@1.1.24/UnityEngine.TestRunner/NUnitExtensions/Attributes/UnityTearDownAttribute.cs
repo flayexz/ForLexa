@@ -1,33 +1,37 @@
-ght be different from the
-        /// virtual camera that owns the collider, in the event that the camera has children</param>
-        /// <returns>True if the virtual camera has been displaced due to collision or
-        /// target obstruction</returns>
-        public float GetCameraDisplacementDistance(ICinemachineCamera vcam)
-        {
-            return GetExtraState<VcamExtraState>(vcam).colliderDisplacement;
-        }
-        
-        private void OnValidate()
-        {
-            m_DistanceLimit = Mathf.Max(0, m_DistanceLimit);
-            m_MinimumOcclusionTime = Mathf.Max(0, m_MinimumOcclusionTime);
-            m_CameraRadius = Mathf.Max(0, m_CameraRadius);
-            m_MinimumDistanceFromTarget = Mathf.Max(0.01f, m_MinimumDistanceFromTarget);
-            m_OptimalTargetDistance = Mathf.Max(0, m_OptimalTargetDistance);
-        }
+using System;
+using NUnit.Framework;
 
-        /// <summary>
-        /// Cleanup
-        /// </summary>
-        protected override void OnDestroy()
-        {
-            DestroyCollider();
-            base.OnDestroy();
-        }
-
-        /// This must be small but greater than 0 - reduces false results due to precision
-        const float PrecisionSlush = 0.001f;
-
-        /// <summary>
-        /// Per-vcam extra state info
-     
+namespace UnityEngine.TestTools
+{
+    /// <summary>
+    /// The <see cref="UnitySetUpAttribute"/> and `UnityTearDown` attributes are identical to the standard `SetUp` and `TearDown` attributes, with the exception that they allow for <see cref="IEditModeTestYieldInstruction"/>. The `UnitySetUp` and `UnityTearDown` attributes expect a return type of [IEnumerator](https://docs.microsoft.com/en-us/dotnet/api/system.collections.ienumerator?view=netframework-4.8).
+    /// <example>
+    /// <code>
+    ///public class SetUpTearDownExample
+    /// {
+    ///     [UnitySetUp]
+    ///     public IEnumerator SetUp()
+    ///     {
+    ///         yield return new EnterPlayMode();
+    ///     }
+    /// 
+    ///     [Test]
+    ///     public void MyTest()
+    ///     {
+    ///         Debug.Log("This runs inside playmode");
+    ///     }
+    /// 
+    ///     [UnityTearDown]
+    ///     public IEnumerator TearDown()
+    ///     {
+    ///         yield return new ExitPlayMode();
+    ///     }
+    /// }
+    /// </code>
+    /// </example>
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
+    public class UnityTearDownAttribute : NUnitAttribute
+    {
+    }
+}

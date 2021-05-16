@@ -1,24 +1,30 @@
-break;
-				case MessageType.Unpause:
-					EditorApplication.isPaused = false;
-					break;
-				case MessageType.Build:
-					// Not used anymore
-					break;
-				case MessageType.Refresh:
-					Refresh();
-					break;
-				case MessageType.Version:
-					Answer(message, MessageType.Version, PackageVersion());
-					break;
-				case MessageType.UpdatePackage:
-					// Not used anymore
-					break;
-				case MessageType.ProjectPath:
-					Answer(message, MessageType.ProjectPath, Path.GetFullPath(Path.Combine(Application.dataPath, "..")));
-					break;
-				case MessageType.ExecuteTests:
-					TestRunnerApiListener.ExecuteTests(message.Value);
-					break;
-				case MessageType.RetrieveTestList:
-					TestRunnerAp
+﻿using System;
+using UnityEngine;
+
+namespace UnityEditor.U2D.Path.GUIFramework
+{
+    public abstract class HoveredControlAction : GUIAction
+    {
+        private Control m_HoveredControl;
+
+        public Control hoveredControl
+        {
+            get { return m_HoveredControl; }
+        }
+
+        public HoveredControlAction(Control control)
+        {
+            m_HoveredControl = control;
+        }
+
+        protected override bool CanTrigger(IGUIState guiState)
+        {
+            return guiState.nearestControl == hoveredControl.ID;
+        }
+
+        protected override void OnTrigger(IGUIState guiState)
+        {
+            m_HoveredControl.SetActionID(ID);
+        }
+    }
+}

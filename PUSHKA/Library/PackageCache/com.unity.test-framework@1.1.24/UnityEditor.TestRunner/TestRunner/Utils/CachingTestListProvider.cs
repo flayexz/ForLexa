@@ -1,49 +1,48 @@
 using System;
-using Unity.Cloud.Collaborate.Models.Structures;
-using JetBrains.Annotations;
+using System.Collections.Generic;
+using UnityEditor.TestTools.TestRunner.Api;
+using UnityEngine.TestRunner.NUnitExtensions;
+using UnityEngine.TestTools;
 
-namespace Unity.Cloud.Collaborate.Models
+namespace UnityEditor.TestTools.TestRunner
 {
-    internal interface IMainModel : IModel
+    internal class CachingTestListProvider
     {
-        /// <summary>
-        /// Signal when the local state switches between conflicted or not.
-        /// </summary>
-        event Action<bool> ConflictStatusChange;
+        private readonly ITestListProvider m_InnerTestListProvider;
+        private readonly ITestListCache m_TestListCache;
+        private readonly ITestAdaptorFactory m_TestAdaptorFactory;
+        public CachingTestListProvider(ITestListProvider innerTestListProvider, ITestListCache testListCache, ITestAdaptorFactory testAdaptorFactory)
+        {
+            m_InnerTestListProvider = innerTestListProvider;
+            m_TestListCache = testListCache;
+            m_TestAdaptorFactory = testAdaptorFactory;
+        }
 
-        /// <summary>
-        /// Signal when an operation with progress has started or stopped.
-        /// </summary>
-        event Action<bool> OperationStatusChange;
+        public IEnumerator<ITestAdaptor> GetTestListAsync(TestPlatform platform)
+        {
+            var testFromCache = m_TestListCache.GetTestFromCacheAsync(platform);
+            while (testFromCache.MoveNext())
+            {
+                yield return null;
+            }
 
-        /// <summary>
-        /// Signal with incremental details of the operation in progress.
-        /// </summary>
-        event Action<IProgressInfo> OperationProgressChange;
 
-        /// <summary>
-        /// Signal when an error has occurred.
-        /// </summary>
-        event Action<IErrorInfo> ErrorOccurred;
+            if (testFromCache.Current != null)
+            {
+                yield return testFromCache.Current;
+            }
+            else
+            {
+                var test = m_InnerTestListProvider.GetTestListAsync(platform);
+                while (test.MoveNext())
+                {
+                    yield return null;
+                }
 
-        /// <summary>
-        /// Signal when the error has cleared.
-        /// </summary>
-        event Action ErrorCleared;
-
-        /// <summary>
-        /// Signal whether or not the there are remote revisions to be fetched.
-        /// </summary>
-        event Action<bool> RemoteRevisionsAvailabilityChange;
-
-        /// <summary>
-        /// Signal when the state of the back button is updated. For example: clearing it or showing a new one.
-        /// The string included is the new label for the back navigation button. If that value is null, clear the back
-        /// navigation.
-        /// </summary>
-        event Action<string> BackButtonStateUpdated;
-
-        /// <summary>
-        /// Returns true if there are remote revisions available.
-        /// </summary>
-        bool Remo
+                test.Current.ParseForNameDuplicates();
+                m_TestListCache.CacheTest(platform, test.Current);
+                yield return m_TestAdaptorFactory.Create(test.Current);
+            }
+        }
+    }
+}
