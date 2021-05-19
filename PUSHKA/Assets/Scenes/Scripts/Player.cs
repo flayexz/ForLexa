@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor.SearchService;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Serialization;
@@ -9,7 +10,8 @@ using UnityEngine.UI;
 public class Player : MonoBehaviour,IPlayer
 {
     [SerializeField] private float speed;
-    public double health;
+    [SerializeField] private double health;
+    public double Health => health;
     private Rigidbody2D player;
     public Text hpDisplay;
     [Header(("Weapons"))]

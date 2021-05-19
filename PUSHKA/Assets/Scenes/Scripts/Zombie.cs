@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.Experimental.GraphView;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.SocialPlatforms.Impl;
 
 public class Zombie : MonoBehaviour, IEnemy
@@ -22,6 +23,7 @@ public class Zombie : MonoBehaviour, IEnemy
     private ScoreManager scoreManager;
     private Collider2D triggerZone;
     private bool isReload => timePassed < AttackDelay;
+    private NavMeshAgent agent;
     
     void Start()
     {
@@ -30,6 +32,9 @@ public class Zombie : MonoBehaviour, IEnemy
         rbPlayer = player.GetComponent<Rigidbody2D>();
         scoreManager = FindObjectOfType<ScoreManager>();
         triggerZone = GetComponents<Collider2D>().First(x => x.isTrigger);
+        agent = GetComponent<NavMeshAgent>();
+        agent.updateRotation = false;
+        agent.updateUpAxis = false;
     }
 
     void Update()
@@ -46,7 +51,8 @@ public class Zombie : MonoBehaviour, IEnemy
 
     private void FixedUpdate()
     {
-        transform.position = Vector2.MoveTowards(transform.position, player.transform.position, Speed * Time.deltaTime);
+        // transform.position = Vector2.MoveTowards(transform.position, player.transform.position, Speed * Time.deltaTime);
+        agent.SetDestination(player.transform.position);
     }
 
     public void TakeDamage(double damage) => Health -= damage;

@@ -62,6 +62,7 @@
      <Compile Include="Assets\Scenes\Scripts\IGun.cs" />
      <Compile Include="Assets\Scenes\Scripts\Bullet.cs" />
      <Compile Include="Assets\Scenes\Scripts\IEnemy.cs" />
+     <Compile Include="Assets\Scenes\Scripts\Restarter.cs" />
  <Reference Include="UnityEngine">
  <HintPath>E:/Unity/2020.3.3f1/Editor/Data/Managed/UnityEngine/UnityEngine.dll</HintPath>
  </Reference>
@@ -724,6 +725,14 @@
  </Reference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="NavMeshComponents.csproj">
+      <Project>{216876cd-7999-73b7-3246-d4dbf92c796d}</Project>
+      <Name>NavMeshComponents</Name>
+    </ProjectReference>
+    <ProjectReference Include="NavMeshComponentsEditor.csproj">
+      <Project>{761cc77a-4256-92b7-42e5-9c6df632663a}</Project>
+      <Name>NavMeshComponentsEditor</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
