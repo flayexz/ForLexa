@@ -77,7 +77,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_Sprite: {fileID: 7482667652216324306, guid: 48e93eef0688c4a259cb0eddcd8661f7, type: 3}
-  m_Color: {r: 0.085884646, g: 0.09433961, b: 0.09433961, a: 1}
+  m_Color: {r: 0, g: 0, b: 0, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -126,9 +126,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   heatsPerSecond: 1
+  medicinePack: {fileID: 6720433966010605127, guid: 14e9a7bb3defb6b4bb516059766719f7, type: 3}
+  chanceToDropMedicinePack: 0.3
   attackRange: 1
   damageByHand: 20
-  KillPoints: 1
+  KillPoints: 2
   Health: 3
   Speed: 3
 --- !u!50 &5539090752534720998

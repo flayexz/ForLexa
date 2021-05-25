@@ -6,10 +6,13 @@ using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.SocialPlatforms.Impl;
+using Random = System.Random;
 
 public class Zombie : MonoBehaviour, IEnemy
 {
     public float heatsPerSecond;
+    [SerializeField] private MedicinePack medicinePack;
+    [SerializeField] private double chanceToDropMedicinePack;
     private float AttackDelay => 1 / heatsPerSecond;
     private float timePassed;
     public float attackRange;
@@ -42,6 +45,8 @@ public class Zombie : MonoBehaviour, IEnemy
         if (Health <= 0)
         {
             Destroy(gameObject);
+            if (medicinePack != null && new Random().NextDouble() <= chanceToDropMedicinePack)
+                Instantiate(medicinePack,transform.position,Quaternion.identity);
             scoreManager.Score += KillPoints;
         }
 

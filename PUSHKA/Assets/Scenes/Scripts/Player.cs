@@ -84,6 +84,11 @@ public class Player : MonoBehaviour,IPlayer
         unlockedWeapons[currentNumberOfGun].gameObject.SetActive(true);
     }
 
+    public void Heal(double additionalHealth)
+    {
+        health += additionalHealth;
+    }
+
     public void TakeDamage(double damage)
     {
         health -= damage;
