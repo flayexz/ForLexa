@@ -50,9 +50,9 @@ public class Zombie : MonoBehaviour, IEnemy
     }
 
     private void FixedUpdate()
-    {
-        // transform.position = Vector2.MoveTowards(transform.position, player.transform.position, Speed * Time.deltaTime);
-        agent.SetDestination(player.transform.position);
+    { 
+        transform.position = Vector2.MoveTowards(transform.position, player.transform.position,
+            Speed * Time.deltaTime);
     }
 
     public void TakeDamage(double damage) => Health -= damage;
