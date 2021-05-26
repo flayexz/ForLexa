@@ -10,16 +10,31 @@ using UnityEngine.UI;
 public class Player : MonoBehaviour,IPlayer
 {
     [SerializeField] private float speed;
+
+    [SerializeField] private double maxHealth;
     [SerializeField] private double health;
     public double Health => health;
     private Rigidbody2D player;
     public Text hpDisplay;
     [Header(("Weapons"))]
-    [SerializeField] private List<Gun> unlockedWeapons;
+    [SerializeField] private List<Gun> unlockedWeapons = new List<Gun>();
     [SerializeField] private Gun[] allWeapons;
-    [SerializeField] private Image weaponIcon;
     [SerializeField] private int maxAmountOfGuns;
     private int currentNumberOfGun;
+
+    public Gun CurrentGun => currentNumberOfGun >= unlockedWeapons.Count || currentNumberOfGun < 0
+        ? null
+        : unlockedWeapons[currentNumberOfGun];
+
+    public Gun additionalWeapon
+    {
+        get
+        {
+            if (unlockedWeapons.Count < 1)
+                return null;
+            return unlockedWeapons[(currentNumberOfGun + 1) % unlockedWeapons.Count];
+        }
+    }
 
     void Start()
     {
@@ -35,7 +50,7 @@ public class Player : MonoBehaviour,IPlayer
     private void FixedUpdate()
     {
         Move();
-        hpDisplay.text = "HP: " + health;
+        hpDisplay.text = $"HP: {health}/{maxHealth}";
     }
     
 
@@ -86,7 +101,8 @@ public class Player : MonoBehaviour,IPlayer
 
     public void Heal(double additionalHealth)
     {
-        health += additionalHealth;
+        var hpAfterHeal = health + additionalHealth;
+        health = hpAfterHeal > maxHealth ? maxHealth : hpAfterHeal;
     }
 
     public void TakeDamage(double damage)

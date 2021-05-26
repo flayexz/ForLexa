@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.UI;
 
 public class Gun : MonoBehaviour, IGun
 {
     public float Offset;
     public GameObject Bullet;
     public Transform ShotPoint;
+    public Image weaponIcon;
 
     private float currentTimeBetweenShoot;
     public float TimeBetweenShotForGun;
