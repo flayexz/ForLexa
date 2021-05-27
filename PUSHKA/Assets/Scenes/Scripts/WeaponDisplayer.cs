@@ -19,7 +19,7 @@ public class WeaponDisplayer : MonoBehaviour
     {
         if (player.CurrentGun != null)
         {
-            ammoCount.text = $"Ammo: {player.CurrentGun.currentAmmo.ToString()}";
+            ammoCount.text = $"Ammo: {player.CurrentGun.CurrentAmmo.ToString()}";
             weaponsImage.sprite = player.CurrentGun.weaponIcon.sprite;
         }
 

@@ -4418,7 +4418,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
     - target: {fileID: 7774384940352741093, guid: 812ac07de209eb944af18645ceaf506b, type: 3}
       propertyPath: ammo
-      value: 300
+      value: 100
       objectReference: {fileID: 0}
     - target: {fileID: 7774384940352741093, guid: 812ac07de209eb944af18645ceaf506b, type: 3}
       propertyPath: Bullet

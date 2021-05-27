@@ -86,6 +86,7 @@ public class Player : MonoBehaviour,IPlayer
     {
         var newGun = allWeapons.First(weapon => weapon.Name == nameOfNewWeapon);
         unlockedWeapons[currentNumberOfGun].gameObject.SetActive(false);
+        unlockedWeapons[currentNumberOfGun].CurrentAmmo = unlockedWeapons[currentNumberOfGun].Ammo;
         unlockedWeapons[currentNumberOfGun] = newGun;
         newGun.gameObject.SetActive(true);
     }

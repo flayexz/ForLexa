@@ -17,7 +17,8 @@ public class Gun : MonoBehaviour, IGun
     private AudioSource sound;
     public bool InHandsPlayer;
     [SerializeField] private int ammo;
-    public int currentAmmo;
+    public  int Ammo => ammo;
+    public int CurrentAmmo;
 
     [SerializeField] private string name;
 
@@ -30,7 +31,7 @@ public class Gun : MonoBehaviour, IGun
 
     void Start()
     {
-        currentAmmo = ammo;
+        CurrentAmmo = ammo;
         sound = GetComponent<AudioSource>();
         player = FindObjectOfType<Player>();
         currentTimeBetweenShoot = TimeBetweenShotForGun;
@@ -64,12 +65,12 @@ public class Gun : MonoBehaviour, IGun
     {
         if (currentTimeBetweenShoot >= TimeBetweenShotForGun )
         {
-            if (Input.GetMouseButton(0) && currentAmmo > 0)
+            if (Input.GetMouseButton(0) && CurrentAmmo > 0)
             {
                 Instantiate(Bullet, ShotPoint.position, transform.rotation);
                 if(sound != null && !sound.isPlaying)
                     sound.Play();
-                currentAmmo--; 
+                CurrentAmmo--; 
                 currentTimeBetweenShoot = 0;
             }
             else if (sound != null)
@@ -81,6 +82,6 @@ public class Gun : MonoBehaviour, IGun
 
     public void AddCartiges()
     {
-        currentAmmo += ammo;
+        CurrentAmmo += ammo;
     }
 }
