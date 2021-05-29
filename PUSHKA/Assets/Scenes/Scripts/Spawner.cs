@@ -4,9 +4,13 @@ using UnityEngine;
 
 public class Spawner : MonoBehaviour
 {
+    [SerializeField] private float deltaSpawnTime;
+    [SerializeField] private float spawnTimeMultiplier;
+    private float timePassed;
     public Zombie[] Zombeis; 
     public float MinSpawnRadius;
     public float MaxSpawnRadius;
+    private ScoreManager scoreManager;
 
     private int amountOfZombies;
 
@@ -15,13 +19,25 @@ public class Spawner : MonoBehaviour
 
     void Start()
     {
+        scoreManager = FindObjectOfType<ScoreManager>();
         amountOfZombies = Zombeis.Length;
-        
     }
 
     private void FixedUpdate()
     {
+        UpdateSpawnTimeIfTimePassed();
         Spawn();
+    }
+
+    private void UpdateSpawnTimeIfTimePassed()
+    {
+        if (timePassed >= deltaSpawnTime)
+        {
+            TimeBetweenSpawn *= spawnTimeMultiplier;
+            timePassed = 0;
+        }
+        else
+            timePassed += Time.deltaTime;
     }
 
     private void Spawn()

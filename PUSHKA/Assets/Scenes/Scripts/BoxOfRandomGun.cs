@@ -38,7 +38,7 @@ public class BoxOfRandomGun : MonoBehaviour
     private bool CheckSpawnConditions()
     {
         return spawnedGun == null && triggerZone.Contains(player.transform.position) && 
-               scoreOfPlayer.Score >= costOfGeneratingNewWeapons && Input.GetKeyDown(KeyCode.E);
+               scoreOfPlayer.Score >= costOfGeneratingNewWeapons && Input.GetKeyDown(KeyCode.F);
     }
     
 }

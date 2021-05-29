@@ -76,18 +76,24 @@ public class Gun : MonoBehaviour, IGun
                     currentTimeBetweenShoot = 0;
                 }
                 else
-                {
-                    if(shootSound.isPlaying)
-                        shootSound.Stop();
-                    if(!soundWhenNoAmmo.isPlaying)
-                        soundWhenNoAmmo.Play();
-                }
+                    PlaySoundIfNoAmmo();
             }
-            else if (shootSound != null)
+            else
+            {
                 shootSound.Stop();
+                soundWhenNoAmmo.Stop();
+            }
         }
         else
             currentTimeBetweenShoot += Time.fixedDeltaTime;
+    }
+
+    private void PlaySoundIfNoAmmo()
+    {
+        if(shootSound.isPlaying)
+            shootSound.Stop();
+        if(!soundWhenNoAmmo.isPlaying)
+            soundWhenNoAmmo.Play();
     }
 
     public void AddCartiges()

@@ -97,7 +97,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1082002789590963739, guid: 17c05df51fb81e4459f7d9b71d24f207, type: 3}
       propertyPath: Speed
-      value: 3
+      value: 22
       objectReference: {fileID: 0}
     - target: {fileID: 1082002789590963739, guid: 17c05df51fb81e4459f7d9b71d24f207, type: 3}
       propertyPath: Damage
@@ -105,7 +105,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1082002789590963739, guid: 17c05df51fb81e4459f7d9b71d24f207, type: 3}
       propertyPath: LifeTime
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2021103066585468192, guid: 17c05df51fb81e4459f7d9b71d24f207, type: 3}
       propertyPath: m_Color.b
