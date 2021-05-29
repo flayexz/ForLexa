@@ -14,7 +14,8 @@ public class Gun : MonoBehaviour, IGun
 
     private float currentTimeBetweenShoot;
     public float TimeBetweenShotForGun;
-    private AudioSource sound;
+    [SerializeField] private AudioSource shootSound;
+    [SerializeField] private AudioSource soundWhenNoAmmo;
     public bool InHandsPlayer;
     [SerializeField] private int ammo;
     public  int Ammo => ammo;
@@ -32,7 +33,6 @@ public class Gun : MonoBehaviour, IGun
     void Start()
     {
         CurrentAmmo = ammo;
-        sound = GetComponent<AudioSource>();
         player = FindObjectOfType<Player>();
         currentTimeBetweenShoot = TimeBetweenShotForGun;
         triggerZone = GetComponent<Collider2D>().bounds;
@@ -65,16 +65,26 @@ public class Gun : MonoBehaviour, IGun
     {
         if (currentTimeBetweenShoot >= TimeBetweenShotForGun )
         {
-            if (Input.GetMouseButton(0) && CurrentAmmo > 0)
+            if (Input.GetMouseButton(0))
             {
-                Instantiate(Bullet, ShotPoint.position, transform.rotation);
-                if(sound != null && !sound.isPlaying)
-                    sound.Play();
-                CurrentAmmo--; 
-                currentTimeBetweenShoot = 0;
+                if (CurrentAmmo > 0)
+                {
+                    Instantiate(Bullet, ShotPoint.position, transform.rotation);
+                    if (shootSound != null && !shootSound.isPlaying)
+                        shootSound.Play();
+                    CurrentAmmo--;
+                    currentTimeBetweenShoot = 0;
+                }
+                else
+                {
+                    if(shootSound.isPlaying)
+                        shootSound.Stop();
+                    if(!soundWhenNoAmmo.isPlaying)
+                        soundWhenNoAmmo.Play();
+                }
             }
-            else if (sound != null)
-                sound.Stop();
+            else if (shootSound != null)
+                shootSound.Stop();
         }
         else
             currentTimeBetweenShoot += Time.fixedDeltaTime;
