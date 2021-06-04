@@ -1,9 +1,8 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class BoxOfRandomGun : MonoBehaviour
 {
+    [SerializeField] private AudioSource weaponBuySound;
     [SerializeField] private Gun[] possibleWeapons;
     [SerializeField] private float lifetimeSpawnedGunInBox;
     [SerializeField] private int costOfGeneratingNewWeapons;
@@ -24,6 +23,7 @@ public class BoxOfRandomGun : MonoBehaviour
         if (CheckSpawnConditions())
         {
             Spawn();
+            weaponBuySound.Play();
             scoreOfPlayer.Score -= costOfGeneratingNewWeapons;
         }
     }
